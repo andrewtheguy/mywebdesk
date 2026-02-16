@@ -5,6 +5,9 @@ import { useGuacamole } from "./useGuacamole";
 const FAB_SIZE = 48;
 const FAB_MARGIN = 16;
 const DRAG_THRESHOLD = 6;
+const TOOLBAR_WIDTH = 260;
+const TOOLBAR_GAP = 12;
+const TOOLBAR_MIN_HEIGHT = 140;
 
 interface FabPosition {
 	x: number;
@@ -86,12 +89,11 @@ export default function App() {
 	const getDefaultFabPosition = useCallback((): FabPosition => {
 		const vp = window.visualViewport;
 		const viewportWidth = vp ? vp.width : window.innerWidth;
-		const viewportHeight = vp ? vp.height : window.innerHeight;
 		const offsetX = vp ? vp.offsetLeft : 0;
 		const offsetY = vp ? vp.offsetTop : 0;
 		return clampFabPosition(
 			offsetX + viewportWidth - FAB_SIZE - FAB_MARGIN,
-			offsetY + viewportHeight - FAB_SIZE - FAB_MARGIN,
+			offsetY + FAB_MARGIN,
 		);
 	}, [clampFabPosition]);
 
@@ -249,6 +251,53 @@ export default function App() {
 		};
 	}, [clampFabPosition]);
 
+	const resolvedFabPosition = fabPosition ?? getDefaultFabPosition();
+
+	const toolbarStyle = (() => {
+		const vp = window.visualViewport;
+		const viewportWidth = vp ? vp.width : window.innerWidth;
+		const viewportHeight = vp ? vp.height : window.innerHeight;
+		const offsetX = vp ? vp.offsetLeft : 0;
+		const offsetY = vp ? vp.offsetTop : 0;
+
+		const minLeft = offsetX + FAB_MARGIN;
+		const maxLeft =
+			offsetX + Math.max(FAB_MARGIN, viewportWidth - TOOLBAR_WIDTH - FAB_MARGIN);
+		const desiredLeft = resolvedFabPosition.x + FAB_SIZE - TOOLBAR_WIDTH;
+		const left = Math.min(Math.max(desiredLeft, minLeft), maxLeft);
+
+		const topBelow = resolvedFabPosition.y + FAB_SIZE + TOOLBAR_GAP;
+		const topAboveAnchor = resolvedFabPosition.y - TOOLBAR_GAP;
+		const availableBelow = offsetY + viewportHeight - topBelow - FAB_MARGIN;
+		const availableAbove = topAboveAnchor - offsetY - FAB_MARGIN;
+		const placeBelow =
+			availableBelow >= TOOLBAR_MIN_HEIGHT || availableBelow >= availableAbove;
+		const maxHeight = Math.max(
+			TOOLBAR_MIN_HEIGHT,
+			Math.floor(placeBelow ? availableBelow : availableAbove),
+		);
+
+		if (placeBelow) {
+			return {
+				left: `${left}px`,
+				top: `${topBelow}px`,
+				right: "auto",
+				bottom: "auto",
+				transform: "none",
+				maxHeight: `${maxHeight}px`,
+			};
+		}
+
+		return {
+			left: `${left}px`,
+			top: `${topAboveAnchor}px`,
+			right: "auto",
+			bottom: "auto",
+			transform: "translateY(-100%)",
+			maxHeight: `${maxHeight}px`,
+		};
+	})();
+
 	return (
 		<div className="app">
 			<div ref={containerRef} className="display-container" />
@@ -292,16 +341,12 @@ export default function App() {
 				<button
 					type="button"
 					className={`fab ${toolbarOpen ? "fab-active" : ""} ${fabDragging ? "fab-dragging" : ""}`}
-					style={
-						fabPosition
-							? {
-									left: `${fabPosition.x}px`,
-									top: `${fabPosition.y}px`,
-									right: "auto",
-									bottom: "auto",
-								}
-							: undefined
-					}
+					style={{
+						left: `${resolvedFabPosition.x}px`,
+						top: `${resolvedFabPosition.y}px`,
+						right: "auto",
+						bottom: "auto",
+					}}
 					onClick={handleFabClick}
 					onPointerDown={handleFabPointerDown}
 					onPointerMove={handleFabPointerMove}
@@ -315,7 +360,7 @@ export default function App() {
 
 			{/* Toolbar drawer */}
 			{toolbarOpen && (
-				<div className="toolbar">
+				<div className="toolbar" style={toolbarStyle}>
 					<div className="toolbar-section">
 						<label className="toolbar-label" htmlFor="clipboard-input">
 							Clipboard

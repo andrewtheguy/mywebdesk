@@ -10,6 +10,38 @@ const TOOLBAR_GAP = 12;
 const TOOLBAR_MIN_HEIGHT = 140;
 const CTRL_KEYSYM = 0xffe3;
 const V_KEYSYM = 0x0076;
+const AES_GCM_IV_SIZE = 12;
+const CRC32_POLYNOMIAL = 0xedb88320;
+
+interface RemoteClipboardPayload {
+	encryptedContent: Uint8Array;
+	iv: Uint8Array;
+	checksumCrc32: string;
+	receivedAtMs: number;
+	contentLengthBytes: number;
+}
+
+const CRC32_TABLE = (() => {
+	const table = new Uint32Array(256);
+	for (let i = 0; i < 256; i += 1) {
+		let c = i;
+		for (let j = 0; j < 8; j += 1) {
+			c = (c & 1) === 1 ? CRC32_POLYNOMIAL ^ (c >>> 1) : c >>> 1;
+		}
+		table[i] = c >>> 0;
+	}
+	return table;
+})();
+
+function computeCrc32Hex(bytes: Uint8Array): string {
+	let crc = 0xffffffff;
+	for (let i = 0; i < bytes.length; i += 1) {
+		const tableIndex = (crc ^ bytes[i]) & 0xff;
+		crc = (crc >>> 8) ^ CRC32_TABLE[tableIndex];
+	}
+	const normalized = (crc ^ 0xffffffff) >>> 0;
+	return normalized.toString(16).padStart(8, "0");
+}
 
 interface FabPosition {
 	x: number;
@@ -71,6 +103,17 @@ export default function App() {
 
 	const [toolbarOpen, setToolbarOpen] = useState(false);
 	const [clipboardInput, setClipboardInput] = useState("");
+	const [remoteClipboardPayload, setRemoteClipboardPayload] =
+		useState<RemoteClipboardPayload | null>(null);
+	const [revealedRemoteClipboardText, setRevealedRemoteClipboardText] =
+		useState<string | null>(null);
+	const [isRemoteClipboardRevealed, setIsRemoteClipboardRevealed] =
+		useState(false);
+	const [isManualClipboardInputActive, setIsManualClipboardInputActive] =
+		useState(false);
+	const [clipboardSecurityError, setClipboardSecurityError] = useState<
+		string | null
+	>(null);
 	const [fabPosition, setFabPosition] = useState<FabPosition | null>(null);
 	const [fabDragging, setFabDragging] = useState(false);
 	const [connectionTarget, setConnectionTarget] =
@@ -86,6 +129,8 @@ export default function App() {
 	const hiddenInputRef = useRef<HTMLInputElement>(null);
 	const clipboardInputRef = useRef<HTMLTextAreaElement>(null);
 	const lastSyncedRemoteClipboardRef = useRef("");
+	const hasProcessedRemoteClipboardRef = useRef(false);
+	const clipboardCryptoKeyRef = useRef<CryptoKey | null>(null);
 	const fabDragStateRef = useRef<FabDragState | null>(null);
 	const suppressFabClickRef = useRef(false);
 	const showKeyboardShortcut = useMemo(() => {
@@ -169,10 +214,86 @@ export default function App() {
 		};
 	}, [disconnect]);
 
-	// Sync remote clipboard to input
+	const getClipboardCryptoKey = useCallback(async (): Promise<CryptoKey> => {
+		const existingKey = clipboardCryptoKeyRef.current;
+		if (existingKey) return existingKey;
+		const generatedKey = await crypto.subtle.generateKey(
+			{ name: "AES-GCM", length: 256 },
+			false,
+			["encrypt", "decrypt"],
+		);
+		clipboardCryptoKeyRef.current = generatedKey;
+		return generatedKey;
+	}, []);
+
+	const decryptRemoteClipboardPayload = useCallback(
+		async (payload: RemoteClipboardPayload): Promise<string> => {
+			const key = await getClipboardCryptoKey();
+			const decryptedBuffer = await crypto.subtle.decrypt(
+				{
+					name: "AES-GCM",
+					iv: payload.iv as BufferSource,
+				},
+				key,
+				payload.encryptedContent as BufferSource,
+			);
+			return new TextDecoder().decode(new Uint8Array(decryptedBuffer));
+		},
+		[getClipboardCryptoKey],
+	);
+
+	// Encrypt remote clipboard data for metadata-first rendering.
 	useEffect(() => {
-		if (!clipboardText) return;
-		setClipboardInput(clipboardText);
+		if (state !== "connected") return;
+		if (!hasProcessedRemoteClipboardRef.current && clipboardText.length === 0)
+			return;
+
+		let cancelled = false;
+
+		const syncRemoteClipboard = async () => {
+			const textBytes = new TextEncoder().encode(clipboardText);
+			try {
+				const key = await getClipboardCryptoKey();
+				const iv = crypto.getRandomValues(new Uint8Array(AES_GCM_IV_SIZE));
+				const encrypted = await crypto.subtle.encrypt(
+					{
+						name: "AES-GCM",
+						iv,
+					},
+					key,
+					textBytes,
+				);
+
+				if (cancelled) return;
+				hasProcessedRemoteClipboardRef.current = true;
+				setRemoteClipboardPayload({
+					encryptedContent: new Uint8Array(encrypted),
+					iv: new Uint8Array(iv),
+					checksumCrc32: computeCrc32Hex(textBytes),
+					receivedAtMs: Date.now(),
+					contentLengthBytes: textBytes.byteLength,
+				});
+				setRevealedRemoteClipboardText(null);
+				setIsRemoteClipboardRevealed(false);
+				setIsManualClipboardInputActive(false);
+				setClipboardSecurityError(null);
+			} catch {
+				if (cancelled) return;
+				hasProcessedRemoteClipboardRef.current = true;
+				setClipboardSecurityError("Clipboard encryption failed");
+				setRemoteClipboardPayload(null);
+			}
+		};
+
+		void syncRemoteClipboard();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [clipboardText, getClipboardCryptoKey, state]);
+
+	// Keep current auto local clipboard sync behavior.
+	useEffect(() => {
 		if (clipboardText === lastSyncedRemoteClipboardRef.current) return;
 		lastSyncedRemoteClipboardRef.current = clipboardText;
 		if (!navigator.clipboard?.writeText) return;
@@ -188,6 +309,15 @@ export default function App() {
 			hiddenInputRef.current?.focus();
 		} else {
 			setIsDisplayFocused(false);
+			setIsRemoteClipboardRevealed(false);
+			setRevealedRemoteClipboardText(null);
+			setIsManualClipboardInputActive(false);
+		}
+		if (state === "idle" || state === "disconnected") {
+			setRemoteClipboardPayload(null);
+			setClipboardSecurityError(null);
+			hasProcessedRemoteClipboardRef.current = false;
+			clipboardCryptoKeyRef.current = null;
 		}
 	}, [state]);
 
@@ -205,6 +335,49 @@ export default function App() {
 	const toggleToolbar = useCallback(() => {
 		setToolbarOpen((prev) => !prev);
 	}, []);
+
+	useEffect(() => {
+		if (toolbarOpen) return;
+		setIsRemoteClipboardRevealed(false);
+		setRevealedRemoteClipboardText(null);
+		if (remoteClipboardPayload) {
+			setIsManualClipboardInputActive(false);
+		}
+	}, [remoteClipboardPayload, toolbarOpen]);
+
+	const isRemoteMetadataMode =
+		!!remoteClipboardPayload &&
+		!isManualClipboardInputActive &&
+		!isRemoteClipboardRevealed;
+	const isRemoteRevealedMode =
+		!!remoteClipboardPayload &&
+		!isManualClipboardInputActive &&
+		isRemoteClipboardRevealed;
+	const clipboardMetadataText = useMemo(() => {
+		if (!remoteClipboardPayload) return "";
+		const receivedAt = new Date(remoteClipboardPayload.receivedAtMs)
+			.toISOString()
+			.replace("T", " ")
+			.replace("Z", " UTC");
+		return [
+			`Checksum (CRC32): ${remoteClipboardPayload.checksumCrc32}`,
+			`Received: ${receivedAt}`,
+			`Content Length: ${remoteClipboardPayload.contentLengthBytes} bytes`,
+		].join("\n");
+	}, [remoteClipboardPayload]);
+	const displayedClipboardText = useMemo(() => {
+		if (isRemoteMetadataMode) return clipboardMetadataText;
+		if (isRemoteRevealedMode) {
+			return revealedRemoteClipboardText ?? "";
+		}
+		return clipboardInput;
+	}, [
+		clipboardInput,
+		clipboardMetadataText,
+		isRemoteMetadataMode,
+		isRemoteRevealedMode,
+		revealedRemoteClipboardText,
+	]);
 
 	// Track viewport size/offset from visualViewport (fallback to window).
 	useEffect(() => {
@@ -370,6 +543,9 @@ export default function App() {
 				const text = await readLocalClipboardText();
 				if (text !== null) {
 					setClipboardInput(text);
+					setIsManualClipboardInputActive(true);
+					setIsRemoteClipboardRevealed(false);
+					setRevealedRemoteClipboardText(null);
 					sendClipboard(text);
 				}
 				sendKey(CTRL_KEYSYM, true);
@@ -381,9 +557,65 @@ export default function App() {
 		[isDisplayFocused, readLocalClipboardText, sendClipboard, sendKey, state],
 	);
 
+	const decryptCurrentRemoteClipboard = useCallback(async (): Promise<
+		string | null
+	> => {
+		if (!remoteClipboardPayload) return null;
+		if (isRemoteRevealedMode && revealedRemoteClipboardText !== null) {
+			return revealedRemoteClipboardText;
+		}
+		try {
+			return await decryptRemoteClipboardPayload(remoteClipboardPayload);
+		} catch {
+			setClipboardSecurityError("Clipboard decryption failed");
+			return null;
+		}
+	}, [
+		decryptRemoteClipboardPayload,
+		isRemoteRevealedMode,
+		remoteClipboardPayload,
+		revealedRemoteClipboardText,
+	]);
+
+	const handleRevealRemoteClipboard = useCallback(() => {
+		void (async () => {
+			const plaintext = await decryptCurrentRemoteClipboard();
+			if (plaintext === null) return;
+			setRevealedRemoteClipboardText(plaintext);
+			setClipboardInput(plaintext);
+			setIsRemoteClipboardRevealed(true);
+			setIsManualClipboardInputActive(false);
+			setClipboardSecurityError(null);
+		})();
+	}, [decryptCurrentRemoteClipboard]);
+
+	const handleClipboardInputChange = useCallback(
+		(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+			setClipboardInput(e.currentTarget.value);
+			setIsManualClipboardInputActive(true);
+			setIsRemoteClipboardRevealed(false);
+			setRevealedRemoteClipboardText(null);
+		},
+		[],
+	);
+
 	const handlePasteClipboard = useCallback(() => {
-		sendClipboard(clipboardInput);
-	}, [clipboardInput, sendClipboard]);
+		void (async () => {
+			if (isRemoteMetadataMode || isRemoteRevealedMode) {
+				const remoteText = await decryptCurrentRemoteClipboard();
+				if (remoteText === null) return;
+				sendClipboard(remoteText);
+				return;
+			}
+			sendClipboard(clipboardInput);
+		})();
+	}, [
+		clipboardInput,
+		decryptCurrentRemoteClipboard,
+		isRemoteMetadataMode,
+		isRemoteRevealedMode,
+		sendClipboard,
+	]);
 
 	const selectClipboardText = useCallback((target: HTMLTextAreaElement) => {
 		target.focus();
@@ -393,22 +625,24 @@ export default function App() {
 
 	const handleClipboardFocus = useCallback(
 		(e: React.FocusEvent<HTMLTextAreaElement>) => {
+			if (isRemoteMetadataMode) return;
 			selectClipboardText(e.currentTarget);
 		},
-		[selectClipboardText],
+		[isRemoteMetadataMode, selectClipboardText],
 	);
 
 	const handleClipboardClick = useCallback(
 		(e: React.MouseEvent<HTMLTextAreaElement>) => {
+			if (isRemoteMetadataMode) return;
 			selectClipboardText(e.currentTarget);
 		},
-		[selectClipboardText],
+		[isRemoteMetadataMode, selectClipboardText],
 	);
 
 	const handleCopyClipboard = useCallback(async () => {
 		if (navigator.clipboard?.writeText) {
 			try {
-				await navigator.clipboard.writeText(clipboardInput);
+				await navigator.clipboard.writeText(displayedClipboardText);
 				return;
 			} catch {
 				// Fallback below for environments where Clipboard API is unavailable.
@@ -425,7 +659,7 @@ export default function App() {
 		if (previousStart !== null && previousEnd !== null) {
 			input.setSelectionRange(previousStart, previousEnd);
 		}
-	}, [clipboardInput, selectClipboardText]);
+	}, [displayedClipboardText, selectClipboardText]);
 
 	const handleShowKeyboard = useCallback(() => {
 		hiddenInputRef.current?.focus();
@@ -604,16 +838,33 @@ export default function App() {
 						<label className="toolbar-label" htmlFor="clipboard-input">
 							Clipboard
 						</label>
-						<textarea
-							id="clipboard-input"
-							ref={clipboardInputRef}
-							className="clipboard-input"
-							value={clipboardInput}
-							onChange={(e) => setClipboardInput(e.target.value)}
-							onFocus={handleClipboardFocus}
-							onClick={handleClipboardClick}
-							rows={3}
-						/>
+						<div className="clipboard-input-shell">
+							<textarea
+								id="clipboard-input"
+								ref={clipboardInputRef}
+								className={`clipboard-input ${isRemoteMetadataMode ? "clipboard-input-metadata" : ""}`}
+								value={displayedClipboardText}
+								onChange={handleClipboardInputChange}
+								onFocus={handleClipboardFocus}
+								onClick={handleClipboardClick}
+								readOnly={isRemoteMetadataMode}
+								rows={3}
+							/>
+							{isRemoteMetadataMode && (
+								<button
+									type="button"
+									className="btn btn-sm clipboard-reveal-cta"
+									onClick={handleRevealRemoteClipboard}
+								>
+									Reveal Clipboard
+								</button>
+							)}
+						</div>
+						{clipboardSecurityError && (
+							<p className="clipboard-security-error">
+								{clipboardSecurityError}
+							</p>
+						)}
 						<div className="clipboard-actions">
 							<button
 								type="button"

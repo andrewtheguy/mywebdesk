@@ -182,6 +182,11 @@
 	margin-bottom: 6px;
 }
 
+.clipboard-input-shell {
+	position: relative;
+	margin-bottom: 8px;
+}
+
 .clipboard-input {
 	width: 100%;
 	box-sizing: border-box;
@@ -193,12 +198,27 @@
 	font-size: 0.875rem;
 	font-family: monospace;
 	resize: vertical;
-	margin-bottom: 8px;
 }
 
 .clipboard-input:focus {
 	outline: none;
 	border-color: #4a9eff;
+}
+
+.clipboard-input-metadata {
+	padding-bottom: 40px;
+}
+
+.clipboard-reveal-cta {
+	position: absolute;
+	right: 8px;
+	bottom: 8px;
+}
+
+.clipboard-security-error {
+	color: #ff9696;
+	font-size: 0.75rem;
+	margin: 0 0 8px;
 }
 
 .clipboard-actions {

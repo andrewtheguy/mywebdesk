@@ -54,5 +54,7 @@ Serves the built frontend from `dist/` on port 18890.
 | `GUACD_PORT` | `14822` | guacd port |
 | `VNC_HOST` | `169.254.0.1` | VNC server hostname |
 | `VNC_PORT` | `5901` | VNC server port |
-| `VNC_PASSWORD` | *(empty)* | VNC password |
 | `MAX_HEIGHT` | `1200` | Max resolution height sent to VNC |
+| `DEBUG_GUAC_PROXY` | `0` | Enable guac proxy debug logs when set to `1` |
+
+VNC password is provided in the connect form and sent at connect time; it is not read from environment variables.

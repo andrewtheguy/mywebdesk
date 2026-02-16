@@ -22,7 +22,10 @@ export default function App() {
 	// Auto-connect on mount
 	useEffect(() => {
 		connect();
-	}, [connect]);
+		return () => {
+			disconnect();
+		};
+	}, [connect, disconnect]);
 
 	// Sync remote clipboard to input
 	useEffect(() => {

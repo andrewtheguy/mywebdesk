@@ -19,6 +19,8 @@ export type ConnectionState =
 export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null>) {
 	const clientRef = useRef<Guacamole.Client | null>(null);
 	const keyboardRef = useRef<Guacamole.Keyboard | null>(null);
+	const connectionIdRef = useRef(0);
+	const manualDisconnectRef = useRef(false);
 	const [state, setState] = useState<ConnectionState>("idle");
 	const [error, setError] = useState<string | null>(null);
 	const [clipboardText, setClipboardText] = useState("");
@@ -27,6 +29,9 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 	const connect = useCallback(async () => {
 		const container = containerRef.current;
 		if (!container) return;
+		const connectionId = connectionIdRef.current + 1;
+		connectionIdRef.current = connectionId;
+		manualDisconnectRef.current = false;
 
 		setState("connecting");
 		setError(null);
@@ -37,16 +42,36 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			const res = await fetch("/api/config");
 			config = await res.json();
 		} catch {
+			if (connectionId !== connectionIdRef.current) return;
 			setError("Failed to fetch config");
 			setState("error");
 			return;
 		}
+		if (connectionId !== connectionIdRef.current) return;
 
 		const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 		const wsUrl = `${wsProtocol}//${window.location.host}/guac/ws`;
 		const tunnel = new Guacamole.WebSocketTunnel(wsUrl);
 		const client = new Guacamole.Client(tunnel);
 		clientRef.current = client;
+
+		tunnel.onerror = (status: Guacamole.Status) => {
+			if (connectionId !== connectionIdRef.current || manualDisconnectRef.current) return;
+			setError(status.message || `Tunnel error code: ${status.code}`);
+			setState("error");
+		};
+
+		tunnel.onstatechange = (tunnelState: number) => {
+			if (connectionId !== connectionIdRef.current) return;
+			if (tunnelState === Guacamole.Tunnel.State.CLOSED) {
+				if (manualDisconnectRef.current) {
+					setState("disconnected");
+				} else {
+					setError((prev) => prev || "Tunnel closed unexpectedly");
+					setState("error");
+				}
+			}
+		};
 
 		// Add display element
 		const display = client.getDisplay();
@@ -56,6 +81,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 
 		// State change handler
 		client.onstatechange = (clientState: number) => {
+			if (connectionId !== connectionIdRef.current) return;
 			switch (clientState) {
 				case Guacamole.Client.State.CONNECTING:
 				case Guacamole.Client.State.WAITING:
@@ -72,6 +98,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		};
 
 		client.onerror = (status: Guacamole.Status) => {
+			if (connectionId !== connectionIdRef.current) return;
 			setError(status.message || `Error code: ${status.code}`);
 			setState("error");
 		};
@@ -212,6 +239,8 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 
 		// Store cleanup in ref for disconnect
 		(client as unknown as Record<string, unknown>).__cleanup = () => {
+			tunnel.onerror = null;
+			tunnel.onstatechange = null;
 			detachTouch();
 			displayEl.removeEventListener("mousedown", handleMouse);
 			displayEl.removeEventListener("mouseup", handleMouse);
@@ -230,12 +259,18 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 	}, [containerRef]);
 
 	const disconnect = useCallback(() => {
+		manualDisconnectRef.current = true;
+		connectionIdRef.current += 1;
 		const client = clientRef.current;
-		if (!client) return;
+		if (!client) {
+			setState("disconnected");
+			return;
+		}
 		const cleanup = (client as unknown as Record<string, unknown>).__cleanup as (() => void) | undefined;
 		cleanup?.();
 		client.disconnect();
 		clientRef.current = null;
+		setState("disconnected");
 
 		// Remove display element
 		const container = containerRef.current;

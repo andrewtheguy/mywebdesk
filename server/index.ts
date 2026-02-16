@@ -3,7 +3,13 @@ import path from "node:path";
 import { attachGuacProxy, closeAll } from "./guacProxy.js";
 
 const app = express();
-const PORT = Number.parseInt(process.env.PORT || "18890", 10);
+const isProduction = process.env.NODE_ENV === "production";
+const PORT = Number.parseInt(
+	isProduction
+		? process.env.PORT || process.env.GUAC_SERVER_PORT || "18890"
+		: process.env.GUAC_SERVER_PORT || "18890",
+	10,
+);
 const HOST = process.env.HOST || "127.0.0.1";
 
 const GUACD_HOST = process.env.GUACD_HOST || "127.0.0.1";

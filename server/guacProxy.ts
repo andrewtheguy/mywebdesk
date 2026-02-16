@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import net from "node:net";
 import { type WebSocket, WebSocketServer } from "ws";
+import { registerSessionWebSocket, validateSessionId } from "./session.js";
 
 interface GuacProxyOptions {
 	guacdHost: string;
@@ -223,10 +224,17 @@ export function attachGuacProxy(
 	const wss = new WebSocketServer({ noServer: true });
 
 	server.on("upgrade", (req, socket, head) => {
-		const pathname = req.url
-			? new URL(req.url, `http://${req.headers.host || "localhost"}`).pathname
-			: "";
+		const upgradeUrl = req.url
+			? new URL(req.url, `http://${req.headers.host || "localhost"}`)
+			: null;
+		const pathname = upgradeUrl?.pathname ?? "";
 		if (pathname !== "/guac/ws") {
+			socket.destroy();
+			return;
+		}
+		const sessionId = upgradeUrl?.searchParams.get("SESSION_ID") ?? "";
+		if (!validateSessionId(sessionId)) {
+			socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
 			socket.destroy();
 			return;
 		}
@@ -237,6 +245,7 @@ export function attachGuacProxy(
 
 	wss.on("connection", (ws, req) => {
 		activeWebSockets.add(ws);
+		registerSessionWebSocket(ws);
 		const requestUrl = new URL(
 			req.url || "/guac/ws",
 			`http://${req.headers.host || "localhost"}`,

@@ -123,6 +123,10 @@ export default function App() {
 		string | null
 	>(null);
 	const [connectionPassword, setConnectionPassword] = useState("");
+	const [sessionPhase, setSessionPhase] = useState<
+		"checking" | "prompt" | "ready"
+	>("checking");
+	const sessionIdRef = useRef<string | null>(null);
 	const [clipboardSendNotice, setClipboardSendNotice] = useState<string | null>(
 		null,
 	);
@@ -208,6 +212,43 @@ export default function App() {
 		};
 
 		loadConnectionTarget();
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	// Session check on mount.
+	useEffect(() => {
+		let cancelled = false;
+
+		const checkSession = async () => {
+			try {
+				const statusRes = await fetch("/api/session");
+				if (cancelled) return;
+				const { active } = (await statusRes.json()) as { active: boolean };
+
+				if (!active) {
+					const claimRes = await fetch("/api/session", { method: "POST" });
+					if (cancelled) return;
+					if (claimRes.ok) {
+						const { sessionId } = (await claimRes.json()) as {
+							sessionId: string;
+						};
+						sessionIdRef.current = sessionId;
+						setSessionPhase("ready");
+					} else {
+						setSessionPhase("prompt");
+					}
+				} else {
+					setSessionPhase("prompt");
+				}
+			} catch {
+				if (!cancelled) setSessionPhase("ready");
+			}
+		};
+
+		void checkSession();
 
 		return () => {
 			cancelled = true;
@@ -707,6 +748,26 @@ export default function App() {
 		setToolbarOpen(false);
 	}, []);
 
+	const handleTakeOverSession = useCallback(() => {
+		void (async () => {
+			try {
+				const res = await fetch("/api/session", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ force: true }),
+				});
+				if (res.ok) {
+					const { sessionId } = (await res.json()) as { sessionId: string };
+					sessionIdRef.current = sessionId;
+					setSessionPhase("ready");
+				}
+			} catch {
+				// Fail open for convenience
+				setSessionPhase("ready");
+			}
+		})();
+	}, []);
+
 	const handleDisconnect = useCallback(() => {
 		disconnect();
 		setConnectionPassword("");
@@ -715,7 +776,10 @@ export default function App() {
 
 	const handleConnect = useCallback(() => {
 		disconnect();
-		connect({ password: connectionPassword });
+		connect({
+			password: connectionPassword,
+			sessionId: sessionIdRef.current ?? undefined,
+		});
 	}, [disconnect, connect, connectionPassword]);
 
 	const handleConnectSubmit = useCallback(
@@ -804,9 +868,27 @@ export default function App() {
 			</div>
 
 			{/* Connection overlay */}
-			{state !== "connected" && (
+			{(sessionPhase !== "ready" || state !== "connected") && (
 				<div className="overlay">
-					{state === "connecting" && (
+					{sessionPhase === "checking" && (
+						<div className="status">
+							<p>Checking session...</p>
+						</div>
+					)}
+					{sessionPhase === "prompt" && (
+						<div className="status">
+							<p>There is an active session.</p>
+							<p>Continuing will disconnect it.</p>
+							<button
+								type="button"
+								className="btn"
+								onClick={handleTakeOverSession}
+							>
+								Continue
+							</button>
+						</div>
+					)}
+					{sessionPhase === "ready" && state === "connecting" && (
 						<div className="status">
 							<p>Connecting...</p>
 							<p>
@@ -816,7 +898,7 @@ export default function App() {
 							</p>
 						</div>
 					)}
-					{state !== "connecting" && (
+					{sessionPhase === "ready" && state !== "connecting" && (
 						<div className="status">
 							<p>
 								{state === "error" ? "Connection failed" : "Ready to connect"}

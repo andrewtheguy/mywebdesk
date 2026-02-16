@@ -105,6 +105,12 @@
 	font-size: 0.875rem;
 }
 
+.btn-xs {
+	padding: 4px 8px;
+	font-size: 0.75rem;
+	border-radius: 4px;
+}
+
 .btn-danger {
 	background: #e74c3c;
 }
@@ -253,6 +259,12 @@
 
 .clipboard-actions .btn {
 	flex: 1;
+}
+
+.toolbar-keys {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
 }
 
 .toolbar-buttons {

@@ -9,7 +9,35 @@ const TOOLBAR_WIDTH = 260;
 const TOOLBAR_GAP = 12;
 const TOOLBAR_MIN_HEIGHT = 140;
 const CTRL_KEYSYM = 0xffe3;
+const ALT_KEYSYM = 0xffe9;
+const SHIFT_KEYSYM = 0xffe1;
+const SUPER_KEYSYM = 0xffeb;
+const TAB_KEYSYM = 0xff09;
+const ESC_KEYSYM = 0xff1b;
+const DEL_KEYSYM = 0xffff;
+const F4_KEYSYM = 0xffc1;
+const F5_KEYSYM = 0xffc2;
+const F11_KEYSYM = 0xffc8;
+const W_KEYSYM = 0x0077;
+const T_KEYSYM = 0x0074;
+const N_KEYSYM = 0x006e;
 const V_KEYSYM = 0x0076;
+const L_KEYSYM = 0x006c;
+
+const KEY_COMBOS: { label: string; keysyms: number[] }[] = [
+	{ label: "Ctrl+W", keysyms: [CTRL_KEYSYM, W_KEYSYM] },
+	{ label: "Ctrl+T", keysyms: [CTRL_KEYSYM, T_KEYSYM] },
+	{ label: "Ctrl+N", keysyms: [CTRL_KEYSYM, N_KEYSYM] },
+	{ label: "Ctrl+L", keysyms: [CTRL_KEYSYM, L_KEYSYM] },
+	{ label: "Ctrl+Shift+T", keysyms: [CTRL_KEYSYM, SHIFT_KEYSYM, T_KEYSYM] },
+	{ label: "Alt+Tab", keysyms: [ALT_KEYSYM, TAB_KEYSYM] },
+	{ label: "Alt+F4", keysyms: [ALT_KEYSYM, F4_KEYSYM] },
+	{ label: "Ctrl+Alt+Del", keysyms: [CTRL_KEYSYM, ALT_KEYSYM, DEL_KEYSYM] },
+	{ label: "F5", keysyms: [F5_KEYSYM] },
+	{ label: "F11", keysyms: [F11_KEYSYM] },
+	{ label: "Ctrl+Esc", keysyms: [CTRL_KEYSYM, ESC_KEYSYM] },
+	{ label: "Super", keysyms: [SUPER_KEYSYM] },
+];
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
 const CLIPBOARD_NOTICE_DURATION_MS = 1800;
@@ -97,7 +125,7 @@ export default function App() {
 		disconnect,
 		sendClipboard,
 		sendKey,
-		sendCtrlAltDel,
+		sendKeyCombo,
 		state,
 		error,
 		clipboardText,
@@ -977,8 +1005,9 @@ export default function App() {
 
 			{/* FAB */}
 			{state === "connected" && (
+				// biome-ignore lint/a11y/useKeyWithClickEvents: click-only to avoid key interference
+				// biome-ignore lint/a11y/noStaticElementInteractions: click-only FAB with drag
 				<div
-					role="button"
 					className={`fab ${toolbarOpen ? "fab-active" : ""} ${fabDragging ? "fab-dragging" : ""}`}
 					style={{
 						left: `${resolvedFabPosition.x}px`,
@@ -991,7 +1020,6 @@ export default function App() {
 					onPointerMove={handleFabPointerMove}
 					onPointerUp={handleFabPointerUp}
 					onPointerCancel={handleFabPointerCancel}
-					aria-label="Toggle toolbar"
 				>
 					{toolbarOpen ? "\u2715" : "\u2630"}
 				</div>
@@ -1062,6 +1090,19 @@ export default function App() {
 						</div>
 					</div>
 
+					<div className="toolbar-section toolbar-keys">
+						{KEY_COMBOS.map(({ label, keysyms }) => (
+							<button
+								key={label}
+								type="button"
+								className="btn btn-xs"
+								onClick={() => sendKeyCombo(keysyms)}
+							>
+								{label}
+							</button>
+						))}
+					</div>
+
 					<div className="toolbar-section toolbar-buttons">
 						{showKeyboardShortcut && (
 							<button
@@ -1072,13 +1113,6 @@ export default function App() {
 								Show Keyboard
 							</button>
 						)}
-						<button
-							type="button"
-							className="btn btn-sm"
-							onClick={sendCtrlAltDel}
-						>
-							Ctrl+Alt+Del
-						</button>
 						<button
 							type="button"
 							className="btn btn-sm btn-danger"

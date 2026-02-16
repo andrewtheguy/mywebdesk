@@ -254,7 +254,7 @@ export function useGuacamole(
 			}
 			keyboard.onkeydown = (keysym: number) => {
 				clientRef.current?.sendKeyEvent(true, keysym);
-				return true;
+				return false;
 			};
 			keyboard.onkeyup = (keysym: number) => {
 				clientRef.current?.sendKeyEvent(false, keysym);
@@ -1441,15 +1441,12 @@ export function useGuacamole(
 		clientRef.current?.sendKeyEvent(pressed, keysym);
 	}, []);
 
-	const sendCtrlAltDel = useCallback(() => {
+	const sendKeyCombo = useCallback((keysyms: number[]) => {
 		const client = clientRef.current;
 		if (!client) return;
-		client.sendKeyEvent(true, 0xffe3); // Ctrl
-		client.sendKeyEvent(true, 0xffe9); // Alt
-		client.sendKeyEvent(true, 0xffff); // Delete
-		client.sendKeyEvent(false, 0xffff);
-		client.sendKeyEvent(false, 0xffe9);
-		client.sendKeyEvent(false, 0xffe3);
+		for (const k of keysyms) client.sendKeyEvent(true, k);
+		for (let i = keysyms.length - 1; i >= 0; i--)
+			client.sendKeyEvent(false, keysyms[i]);
 	}, []);
 
 	// Cleanup on unmount
@@ -1464,7 +1461,7 @@ export function useGuacamole(
 		disconnect,
 		sendClipboard,
 		sendKey,
-		sendCtrlAltDel,
+		sendKeyCombo,
 		state,
 		error,
 		clipboardText,

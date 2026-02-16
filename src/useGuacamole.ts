@@ -180,14 +180,14 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		};
 
 		// Keyboard
-		const keyboard = new Guacamole.Keyboard(document);
+		const keyboard = keyboardRef.current || new Guacamole.Keyboard(document);
 		keyboardRef.current = keyboard;
 		keyboard.onkeydown = (keysym: number) => {
-			client.sendKeyEvent(true, keysym);
+			clientRef.current?.sendKeyEvent(true, keysym);
 			return true;
 		};
 		keyboard.onkeyup = (keysym: number) => {
-			client.sendKeyEvent(false, keysym);
+			clientRef.current?.sendKeyEvent(false, keysym);
 		};
 
 		let fitScale = 1;
@@ -1221,8 +1221,9 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				window.visualViewport.removeEventListener("resize", scheduleResize);
 			}
 			if (keyboardRef.current) {
+				keyboardRef.current.onkeydown = null;
+				keyboardRef.current.onkeyup = null;
 				keyboardRef.current.reset();
-				keyboardRef.current = null;
 			}
 			if (resizeTimer.current) clearTimeout(resizeTimer.current);
 		};
@@ -1233,6 +1234,11 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		connectionIdRef.current += 1;
 		const client = clientRef.current;
 		if (!client) {
+			if (keyboardRef.current) {
+				keyboardRef.current.onkeydown = null;
+				keyboardRef.current.onkeyup = null;
+				keyboardRef.current.reset();
+			}
 			setState("disconnected");
 			return;
 		}

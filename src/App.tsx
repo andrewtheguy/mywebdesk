@@ -313,48 +313,48 @@ export default function App() {
 				</button>
 			)}
 
-				{/* Toolbar drawer */}
-				{toolbarOpen && (
-					<div className="toolbar">
-						<div className="toolbar-section">
-							<label className="toolbar-label" htmlFor="clipboard-input">
-								Clipboard
-							</label>
-							<textarea
-								id="clipboard-input"
-								ref={clipboardInputRef}
-								className="clipboard-input"
-								value={clipboardInput}
-								onChange={(e) => setClipboardInput(e.target.value)}
-								onFocus={handleClipboardFocus}
-								onClick={handleClipboardClick}
-								rows={3}
-							/>
-							<div className="clipboard-actions">
-								<button type="button" className="btn btn-sm" onClick={handlePasteClipboard}>
-									Send to remote
-								</button>
-								<button type="button" className="btn btn-sm" onClick={handleCopyClipboard}>
-									Copy
-								</button>
-							</div>
-						</div>
-
-						<div className="toolbar-section toolbar-buttons">
-							{showKeyboardShortcut && (
-								<button type="button" className="btn btn-sm" onClick={handleShowKeyboard}>
-									Show Keyboard
-								</button>
-							)}
-							<button type="button" className="btn btn-sm" onClick={sendCtrlAltDel}>
-								Ctrl+Alt+Del
+			{/* Toolbar drawer */}
+			{toolbarOpen && (
+				<div className="toolbar">
+					<div className="toolbar-section">
+						<label className="toolbar-label" htmlFor="clipboard-input">
+							Clipboard
+						</label>
+						<textarea
+							id="clipboard-input"
+							ref={clipboardInputRef}
+							className="clipboard-input"
+							value={clipboardInput}
+							onChange={(e) => setClipboardInput(e.target.value)}
+							onFocus={handleClipboardFocus}
+							onClick={handleClipboardClick}
+							rows={3}
+						/>
+						<div className="clipboard-actions">
+							<button type="button" className="btn btn-sm" onClick={handlePasteClipboard}>
+								Send to remote
 							</button>
-							<button type="button" className="btn btn-sm btn-danger" onClick={handleDisconnect}>
-								Disconnect
+							<button type="button" className="btn btn-sm" onClick={handleCopyClipboard}>
+								Copy
 							</button>
 						</div>
 					</div>
-				)}
+
+					<div className="toolbar-section toolbar-buttons">
+						{showKeyboardShortcut && (
+							<button type="button" className="btn btn-sm" onClick={handleShowKeyboard}>
+								Show Keyboard
+							</button>
+						)}
+						<button type="button" className="btn btn-sm" onClick={sendCtrlAltDel}>
+							Ctrl+Alt+Del
+						</button>
+						<button type="button" className="btn btn-sm btn-danger" onClick={handleDisconnect}>
+							Disconnect
+						</button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

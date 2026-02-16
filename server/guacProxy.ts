@@ -106,12 +106,64 @@ function parseInstructionStream(
 	};
 }
 
+function parseInstructionMessage(message: string): ParsedInstruction[] | null {
+	const instructions: ParsedInstruction[] = [];
+	let offset = 0;
+
+	while (offset < message.length) {
+		const instruction = parseOneInstruction(message, offset);
+		if (!instruction) return null;
+		instructions.push(instruction);
+		offset = instruction.nextOffset;
+	}
+
+	return instructions;
+}
+
 function parseList(value: string | null): string[] {
 	if (!value) return [];
 	return value
 		.split(",")
 		.map((item) => item.trim())
 		.filter((item) => item.length > 0);
+}
+
+function decodeWebSocketMessageData(
+	data: string | Buffer | ArrayBuffer | Buffer[],
+): string {
+	if (typeof data === "string") return data;
+	if (Buffer.isBuffer(data)) return data.toString("utf-8");
+	if (Array.isArray(data)) return Buffer.concat(data).toString("utf-8");
+	return Buffer.from(data).toString("utf-8");
+}
+
+function normalizeKeyPressedArg(value: string): string {
+	const normalized = value.toLowerCase();
+	if (normalized === "true") return "1";
+	if (normalized === "false") return "0";
+	return value;
+}
+
+function normalizeClientInstruction(instruction: ParsedInstruction): string {
+	if (instruction.opcode !== "key" || instruction.args.length < 2) {
+		return instruction.raw;
+	}
+
+	const normalizedPressed = normalizeKeyPressedArg(instruction.args[1]);
+	if (normalizedPressed === instruction.args[1]) {
+		return instruction.raw;
+	}
+
+	return toInstruction([
+		instruction.opcode,
+		instruction.args[0],
+		normalizedPressed,
+		...instruction.args.slice(2),
+	]);
+}
+
+function isInternalPingInstruction(instruction: ParsedInstruction): boolean {
+	return instruction.opcode === "" && instruction.args[0] === "ping";
 }
 
 function closeWithGuacStatus(ws: WebSocket, statusCode: number): void {
@@ -315,22 +367,36 @@ export function attachGuacProxy(
 		});
 
 		ws.on("message", (data) => {
-			const message =
-				typeof data === "string" ? data : Buffer.from(data as ArrayBuffer).toString("utf-8");
-			if (message.startsWith("0.,4.ping,")) {
-				if (ws.readyState === ws.OPEN) {
-					ws.send(message);
+			const message = decodeWebSocketMessageData(
+				data as string | Buffer | ArrayBuffer | Buffer[],
+			);
+			const instructions = parseInstructionMessage(message);
+			if (!instructions) {
+				console.error("Failed parsing websocket instruction stream from client");
+				closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
+				if (!tcp.destroyed) {
+					tcp.destroy();
 				}
 				return;
 			}
 
-			if (!ready) {
-				pendingClientMessages.push(message);
-				return;
-			}
+			for (const instruction of instructions) {
+				if (isInternalPingInstruction(instruction)) {
+					if (ws.readyState === ws.OPEN) {
+						ws.send(instruction.raw);
+					}
+					continue;
+				}
 
-			if (!tcp.destroyed) {
-				tcp.write(message);
+				const normalizedInstruction = normalizeClientInstruction(instruction);
+				if (!ready) {
+					pendingClientMessages.push(normalizedInstruction);
+					continue;
+				}
+
+				if (!tcp.destroyed) {
+					tcp.write(normalizedInstruction);
+				}
 			}
 		});
 

@@ -1,7 +1,7 @@
 import type { Socket } from "node:net";
 import path from "node:path";
 import express from "express";
-import { attachGuacProxy, closeAll } from "./guacProxy.js";
+import { attachGuacProxy, closeAll, getVncDisplaySize } from "./guacProxy.js";
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -17,14 +17,16 @@ const GUACD_HOST = process.env.GUACD_HOST || "127.0.0.1";
 const GUACD_PORT = Number.parseInt(process.env.GUACD_PORT || "14822", 10);
 const VNC_HOST = process.env.VNC_HOST || "169.254.0.1";
 const VNC_PORT = process.env.VNC_PORT || "5901";
-const MAX_HEIGHT = Number.parseInt(process.env.MAX_HEIGHT || "1200", 10);
 
 app.get("/api/config", (_req, res) => {
 	res.json({
 		vncHost: VNC_HOST,
 		vncPort: VNC_PORT,
-		maxHeight: MAX_HEIGHT,
 	});
+});
+
+app.get("/api/display", (_req, res) => {
+	res.json(getVncDisplaySize());
 });
 
 // Serve static frontend assets (production build)

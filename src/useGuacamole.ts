@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface Config {
 	vncHost: string;
 	vncPort: string;
-	maxHeight: number;
 }
 
 interface ConnectOptions {
@@ -30,6 +29,11 @@ const THREE_FINGER_SCROLL_STEP_PX = 32;
 const HORIZONTAL_SCROLL_MODIFIER_KEYSYM = 0xffe1;
 const RESIZE_RETRY_DELAY_MS = 220;
 const MAX_RESIZE_RETRIES = 6;
+const GUAC_STATUS_MESSAGES: Record<number, string> = {
+	512: "Proxy/server error while establishing the session",
+	514: "Timed out waiting for the upstream connection to become ready",
+	519: "Unable to reach the configured VNC target",
+};
 
 interface PanOffset {
 	x: number;
@@ -81,11 +85,24 @@ interface ThreeFingerScrollGesture {
 	carryY: number;
 }
 
+function formatGuacStatusError(
+	status: Guacamole.Status,
+	fallbackLabel: string,
+): string {
+	const message = status.message?.trim();
+	if (message) return message;
+	const mapped = GUAC_STATUS_MESSAGES[status.code];
+	if (mapped) return `${mapped} (code ${status.code})`;
+	return `${fallbackLabel} (${status.code})`;
+}
+
 export function useGuacamole(
 	containerRef: React.RefObject<HTMLDivElement | null>,
 ) {
 	const clientRef = useRef<Guacamole.Client | null>(null);
 	const keyboardRef = useRef<Guacamole.Keyboard | null>(null);
+	const keyboardTargetRef = useRef<HTMLElement | Document | null>(null);
+	const displayElementRef = useRef<HTMLElement | null>(null);
 	const connectionIdRef = useRef(0);
 	const manualDisconnectRef = useRef(false);
 	const [state, setState] = useState<ConnectionState>("idle");
@@ -142,7 +159,7 @@ export function useGuacamole(
 					manualDisconnectRef.current
 				)
 					return;
-				setError(status.message || `Tunnel error code: ${status.code}`);
+				setError(formatGuacStatusError(status, "Tunnel error"));
 				setState("error");
 			};
 
@@ -172,7 +189,15 @@ export function useGuacamole(
 			displayEl.style.touchAction = "none";
 			displayEl.style.transformOrigin = "0 0";
 			displayEl.style.willChange = "transform";
+			const previousDisplayEl = displayElementRef.current;
+			if (
+				previousDisplayEl &&
+				previousDisplayEl.parentElement === containerEl
+			) {
+				containerEl.removeChild(previousDisplayEl);
+			}
 			containerEl.appendChild(displayEl);
+			displayElementRef.current = displayEl;
 
 			// State change handler
 			client.onstatechange = (clientState: number) => {
@@ -194,7 +219,7 @@ export function useGuacamole(
 
 			client.onerror = (status: Guacamole.Status) => {
 				if (connectionId !== connectionIdRef.current) return;
-				setError(status.message || `Error code: ${status.code}`);
+				setError(formatGuacStatusError(status, "Remote session error"));
 				setState("error");
 			};
 
@@ -215,8 +240,17 @@ export function useGuacamole(
 			};
 
 			// Keyboard
-			const keyboard = keyboardRef.current || new Guacamole.Keyboard(document);
-			keyboardRef.current = keyboard;
+			let keyboard = keyboardRef.current;
+			if (!keyboard || keyboardTargetRef.current !== containerEl) {
+				if (keyboard) {
+					keyboard.onkeydown = null;
+					keyboard.onkeyup = null;
+					keyboard.reset();
+				}
+				keyboard = new Guacamole.Keyboard(containerEl);
+				keyboardRef.current = keyboard;
+				keyboardTargetRef.current = containerEl;
+			}
 			keyboard.onkeydown = (keysym: number) => {
 				clientRef.current?.sendKeyEvent(true, keysym);
 				return true;
@@ -236,6 +270,7 @@ export function useGuacamole(
 			let ignoreSingleTouchUntilRelease = false;
 			let cursorPosition = { x: 0, y: 0 };
 			let hasCursorPosition = false;
+			let nativeDisplaySize: { width: number; height: number } | null = null;
 			let lastRequestedSize = { width: 0, height: 0 };
 			let pendingResizeTarget: { width: number; height: number } | null = null;
 			let pendingResizeRetries = 0;
@@ -1220,18 +1255,17 @@ export function useGuacamole(
 				e.preventDefault();
 			}
 
-			// Resize to the actual viewport/container size, capped by max-height.
+			// Resize to the actual viewport/container size, min-clamped to native VNC resolution.
 			function doResize() {
 				if (!canSendResize) return;
 
 				const vp = window.visualViewport;
-				const w = Math.max(1, Math.round(vp ? vp.width : window.innerWidth));
+				let w = Math.max(1, Math.round(vp ? vp.width : window.innerWidth));
 				let h = Math.max(1, Math.round(vp ? vp.height : window.innerHeight));
-				const maxHeight = Math.max(
-					1,
-					Number.isFinite(config.maxHeight) ? config.maxHeight : 1,
-				);
-				if (h > maxHeight) h = maxHeight;
+				if (nativeDisplaySize) {
+					w = Math.max(nativeDisplaySize.width, w);
+					h = Math.max(nativeDisplaySize.height, h);
+				}
 
 				if (lastRequestedSize.width === w && lastRequestedSize.height === h) {
 					return;
@@ -1240,7 +1274,6 @@ export function useGuacamole(
 				pendingResizeTarget = { width: w, height: h };
 				pendingResizeRetries = 0;
 
-				// Send CSS-pixel viewport size; multiplying by DPR makes Retina displays look zoomed out.
 				client.sendSize(w, h);
 				queueResizeRetry();
 			}
@@ -1284,11 +1317,14 @@ export function useGuacamole(
 			}
 
 			// Apply base fit scale and any active pinch zoom/pan.
-			display.onresize = () => {
+			display.onresize = (width: number, height: number) => {
+				if (!nativeDisplaySize) {
+					nativeDisplaySize = { width, height };
+				}
 				if (
 					pendingResizeTarget &&
-					display.getWidth() === pendingResizeTarget.width &&
-					display.getHeight() === pendingResizeTarget.height
+					width === pendingResizeTarget.width &&
+					height === pendingResizeTarget.height
 				) {
 					pendingResizeTarget = null;
 					pendingResizeRetries = 0;
@@ -1310,6 +1346,15 @@ export function useGuacamole(
 			params.set("HOSTNAME", config.vncHost);
 			params.set("PORT", config.vncPort);
 			if (options?.password) params.set("PASSWORD", options.password);
+			const vp = window.visualViewport;
+			params.set(
+				"WIDTH",
+				String(Math.max(1, Math.round(vp ? vp.width : window.innerWidth))),
+			);
+			params.set(
+				"HEIGHT",
+				String(Math.max(1, Math.round(vp ? vp.height : window.innerHeight))),
+			);
 
 			client.connect(params.toString());
 
@@ -1336,6 +1381,12 @@ export function useGuacamole(
 					keyboardRef.current.onkeyup = null;
 					keyboardRef.current.reset();
 				}
+				if (displayElementRef.current === displayEl) {
+					displayElementRef.current = null;
+				}
+				if (displayEl.parentElement === containerEl) {
+					containerEl.removeChild(displayEl);
+				}
 				if (resizeTimer.current) clearTimeout(resizeTimer.current);
 				clearResizeRetryTimer();
 			};
@@ -1353,6 +1404,11 @@ export function useGuacamole(
 				keyboardRef.current.onkeyup = null;
 				keyboardRef.current.reset();
 			}
+			const displayEl = displayElementRef.current;
+			if (displayEl?.parentElement) {
+				displayEl.parentElement.removeChild(displayEl);
+			}
+			displayElementRef.current = null;
 			setState("disconnected");
 			return;
 		}
@@ -1363,21 +1419,20 @@ export function useGuacamole(
 		client.disconnect();
 		clientRef.current = null;
 		setState("disconnected");
+	}, []);
 
-		// Remove display element
-		const container = containerRef.current;
-		if (container) {
-			while (container.firstChild) container.removeChild(container.firstChild);
-		}
-	}, [containerRef]);
-
-	const sendClipboard = useCallback((text: string) => {
+	const sendClipboard = useCallback((text: string): boolean => {
 		const client = clientRef.current;
-		if (!client) return;
-		const stream = client.createClipboardStream("text/plain");
-		const writer = new Guacamole.StringWriter(stream);
-		writer.sendText(text);
-		writer.sendEnd();
+		if (!client) return false;
+		try {
+			const stream = client.createClipboardStream("text/plain");
+			const writer = new Guacamole.StringWriter(stream);
+			writer.sendText(text);
+			writer.sendEnd();
+			return true;
+		} catch {
+			return false;
+		}
 	}, []);
 
 	const sendKey = useCallback((keysym: number, pressed: boolean) => {

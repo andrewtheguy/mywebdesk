@@ -10,7 +10,7 @@ Minimal, mobile-friendly VNC viewer using `guacamole-common-js` with a custom UI
 
 - **Visible menu toggle** — FAB button always visible (no Ctrl+Alt+Shift or swipe needed)
 - **Consistent touch controls** — one-finger tap: left-click at cursor; hard-press: hold left-click; second-finger directional drag: move cursor while hold-drag is active; two-finger tap: right-click; two-finger pinch: zoom; two-finger drag: pan when not in hold-drag mode; three-finger swipe: scroll (vertical and horizontal via Shift+Wheel emulation)
-- **Smart sizing** — follows viewport/container size with max height cap
+- **Smart sizing** — follows viewport/container size, min-clamped to native VNC resolution
 
 ## Architecture
 
@@ -54,7 +54,10 @@ Serves the built frontend from `dist/` on port 18890.
 | `GUACD_PORT` | `14822` | guacd port |
 | `VNC_HOST` | `169.254.0.1` | VNC server hostname |
 | `VNC_PORT` | `5901` | VNC server port |
-| `MAX_HEIGHT` | `1200` | Max resolution height sent to VNC |
 | `DEBUG_GUAC_PROXY` | `0` | Enable guac proxy debug logs when set to `1` |
 
 VNC password is provided in the connect form and sent at connect time; it is not read from environment variables.
+
+## Browser requirements
+
+Requires the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) (`crypto.subtle`). This is available in all modern browsers when served over HTTPS or localhost. The app will refuse to load on unsupported browsers.

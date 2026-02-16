@@ -38,6 +38,7 @@ export default function App() {
 	const [fabPosition, setFabPosition] = useState<FabPosition | null>(null);
 	const [fabDragging, setFabDragging] = useState(false);
 	const hiddenInputRef = useRef<HTMLInputElement>(null);
+	const clipboardInputRef = useRef<HTMLTextAreaElement>(null);
 	const fabDragStateRef = useRef<FabDragState | null>(null);
 	const suppressFabClickRef = useRef(false);
 
@@ -163,6 +164,48 @@ export default function App() {
 		sendClipboard(clipboardInput);
 	}, [clipboardInput, sendClipboard]);
 
+	const selectClipboardText = useCallback((target: HTMLTextAreaElement) => {
+		target.focus();
+		target.select();
+		target.setSelectionRange(0, target.value.length);
+	}, []);
+
+	const handleClipboardFocus = useCallback(
+		(e: React.FocusEvent<HTMLTextAreaElement>) => {
+			selectClipboardText(e.currentTarget);
+		},
+		[selectClipboardText],
+	);
+
+	const handleClipboardClick = useCallback(
+		(e: React.MouseEvent<HTMLTextAreaElement>) => {
+			selectClipboardText(e.currentTarget);
+		},
+		[selectClipboardText],
+	);
+
+	const handleCopyClipboard = useCallback(async () => {
+		if (navigator.clipboard?.writeText) {
+			try {
+				await navigator.clipboard.writeText(clipboardInput);
+				return;
+			} catch {
+				// Fallback below for environments where Clipboard API is unavailable.
+			}
+		}
+
+		const input = clipboardInputRef.current;
+		if (!input) return;
+
+		const previousStart = input.selectionStart;
+		const previousEnd = input.selectionEnd;
+		selectClipboardText(input);
+		document.execCommand("copy");
+		if (previousStart !== null && previousEnd !== null) {
+			input.setSelectionRange(previousStart, previousEnd);
+		}
+	}, [clipboardInput, selectClipboardText]);
+
 	const toggleKeyboard = useCallback(() => {
 		setKeyboardVisible((prev) => {
 			const next = !prev;
@@ -273,21 +316,29 @@ export default function App() {
 			{/* Toolbar drawer */}
 			{toolbarOpen && (
 				<div className="toolbar">
-					<div className="toolbar-section">
-						<label className="toolbar-label" htmlFor="clipboard-input">
-							Clipboard
-						</label>
-						<textarea
-							id="clipboard-input"
-							className="clipboard-input"
-							value={clipboardInput}
-							onChange={(e) => setClipboardInput(e.target.value)}
-							rows={3}
-						/>
-						<button type="button" className="btn btn-sm" onClick={handlePasteClipboard}>
-							Send to remote
-						</button>
-					</div>
+						<div className="toolbar-section">
+							<label className="toolbar-label" htmlFor="clipboard-input">
+								Clipboard
+							</label>
+							<textarea
+								id="clipboard-input"
+								ref={clipboardInputRef}
+								className="clipboard-input"
+								value={clipboardInput}
+								onChange={(e) => setClipboardInput(e.target.value)}
+								onFocus={handleClipboardFocus}
+								onClick={handleClipboardClick}
+								rows={3}
+							/>
+							<div className="clipboard-actions">
+								<button type="button" className="btn btn-sm" onClick={handlePasteClipboard}>
+									Send to remote
+								</button>
+								<button type="button" className="btn btn-sm" onClick={handleCopyClipboard}>
+									Copy
+								</button>
+							</div>
+						</div>
 
 					<div className="toolbar-section toolbar-buttons">
 						<button type="button" className="btn btn-sm" onClick={toggleKeyboard}>

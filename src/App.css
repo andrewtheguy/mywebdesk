@@ -170,6 +170,15 @@
 	border-color: #4a9eff;
 }
 
+.clipboard-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.clipboard-actions .btn {
+	flex: 1;
+}
+
 .toolbar-buttons {
 	display: flex;
 	flex-direction: column;

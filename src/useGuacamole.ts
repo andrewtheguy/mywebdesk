@@ -28,6 +28,8 @@ const TWO_FINGER_TAP_MAX_DURATION_MS = 260;
 const THREE_FINGER_SCROLL_AXIS_LOCK_PX = 10;
 const THREE_FINGER_SCROLL_STEP_PX = 32;
 const HORIZONTAL_SCROLL_MODIFIER_KEYSYM = 0xffe1;
+const RESIZE_RETRY_DELAY_MS = 220;
+const MAX_RESIZE_RETRIES = 6;
 
 interface PanOffset {
 	x: number;
@@ -131,6 +133,8 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			if (canSendResize) {
 				lastRequestedSize = { width: 0, height: 0 };
 				doResize();
+				if (resizeTimer.current) clearTimeout(resizeTimer.current);
+				resizeTimer.current = setTimeout(doResize, 250);
 			}
 			if (tunnelState === Guacamole.Tunnel.State.CLOSED) {
 				if (manualDisconnectRef.current) {
@@ -211,9 +215,19 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		let cursorPosition = { x: 0, y: 0 };
 		let hasCursorPosition = false;
 		let lastRequestedSize = { width: 0, height: 0 };
+		let pendingResizeTarget: { width: number; height: number } | null = null;
+		let pendingResizeRetries = 0;
+		let resizeRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 		function clampValue(value: number, min: number, max: number): number {
 			return Math.min(max, Math.max(min, value));
+		}
+
+		function clearResizeRetryTimer(): void {
+			if (resizeRetryTimer) {
+				clearTimeout(resizeRetryTimer);
+				resizeRetryTimer = null;
+			}
 		}
 
 		function consumeTouchEvent(e: TouchEvent): void {
@@ -1169,9 +1183,12 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				return;
 			}
 			lastRequestedSize = { width: w, height: h };
+			pendingResizeTarget = { width: w, height: h };
+			pendingResizeRetries = 0;
 
 			// Send CSS-pixel viewport size; multiplying by DPR makes Retina displays look zoomed out.
 			client.sendSize(w, h);
+			queueResizeRetry();
 		}
 
 		function scheduleResize() {
@@ -1179,17 +1196,50 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			resizeTimer.current = setTimeout(doResize, 250);
 		}
 
-		function handleInitialResize() {
-			doResize();
-			scheduleResize();
+		function queueResizeRetry(): void {
+			clearResizeRetryTimer();
+			if (!pendingResizeTarget || !canSendResize) return;
+
+			resizeRetryTimer = setTimeout(() => {
+				if (!pendingResizeTarget || !canSendResize) return;
+				const remoteWidth = display.getWidth();
+				const remoteHeight = display.getHeight();
+
+				if (
+					remoteWidth === pendingResizeTarget.width &&
+					remoteHeight === pendingResizeTarget.height
+				) {
+					pendingResizeTarget = null;
+					pendingResizeRetries = 0;
+					return;
+				}
+
+				if (pendingResizeRetries >= MAX_RESIZE_RETRIES) {
+					pendingResizeTarget = null;
+					pendingResizeRetries = 0;
+					return;
+				}
+
+				pendingResizeRetries += 1;
+				client.sendSize(pendingResizeTarget.width, pendingResizeTarget.height);
+				queueResizeRetry();
+			}, RESIZE_RETRY_DELAY_MS);
 		}
 
 		// Apply base fit scale and any active pinch zoom/pan.
 		display.onresize = () => {
+			if (
+				pendingResizeTarget &&
+				display.getWidth() === pendingResizeTarget.width &&
+				display.getHeight() === pendingResizeTarget.height
+			) {
+				pendingResizeTarget = null;
+				pendingResizeRetries = 0;
+				clearResizeRetryTimer();
+			}
 			applyDisplayTransform();
 		};
 
-		window.addEventListener("load", handleInitialResize);
 		window.addEventListener("resize", scheduleResize);
 		window.addEventListener("orientationchange", scheduleResize);
 		if (window.visualViewport) {
@@ -1205,7 +1255,6 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		if (options?.password) params.set("PASSWORD", options.password);
 
 		client.connect(params.toString());
-		handleInitialResize();
 
 		// Store cleanup in ref for disconnect
 		(client as unknown as Record<string, unknown>).__cleanup = () => {
@@ -1219,7 +1268,6 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			displayEl.removeEventListener("mouseup", handleMouse);
 			displayEl.removeEventListener("mousemove", handleMouse);
 			displayEl.removeEventListener("wheel", handleWheel);
-			window.removeEventListener("load", handleInitialResize);
 			window.removeEventListener("resize", scheduleResize);
 			window.removeEventListener("orientationchange", scheduleResize);
 			if (window.visualViewport) {
@@ -1231,6 +1279,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				keyboardRef.current.reset();
 			}
 			if (resizeTimer.current) clearTimeout(resizeTimer.current);
+			clearResizeRetryTimer();
 		};
 	}, [containerRef]);
 

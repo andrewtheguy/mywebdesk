@@ -1,8 +1,21 @@
 import type { Socket } from "node:net";
 import path from "node:path";
 import express from "express";
+import {
+	createAuthToken,
+	getAuthCookieName,
+	getAuthTokenFromCookieHeader,
+	revokeAuthToken,
+	validateAuthToken,
+	validateSecret,
+} from "./auth.js";
 import { attachGuacProxy, closeAll, getVncDisplaySize } from "./guacProxy.js";
 import { claimSession, hasActiveSession } from "./session.js";
+
+if (!process.env.SITE_SECRET) {
+	console.error("SITE_SECRET env var is required");
+	process.exit(1);
+}
 
 const app = express();
 app.use(express.json());
@@ -20,22 +33,66 @@ const GUACD_PORT = Number.parseInt(process.env.GUACD_PORT || "14822", 10);
 const VNC_HOST = process.env.VNC_HOST || "169.254.0.1";
 const VNC_PORT = process.env.VNC_PORT || "5901";
 
-app.get("/api/config", (_req, res) => {
+// --- Public auth routes ---
+
+app.post("/api/auth/login", (req, res) => {
+	const { secret } = (req.body as { secret?: string } | undefined) ?? {};
+	if (!secret || !validateSecret(secret)) {
+		res.status(401).json({ error: "invalid_secret" });
+		return;
+	}
+	const token = createAuthToken();
+	res.setHeader(
+		"Set-Cookie",
+		`${getAuthCookieName()}=${token}; HttpOnly; SameSite=Strict; Path=/`,
+	);
+	res.json({ ok: true });
+});
+
+app.post("/api/auth/logout", (_req, res) => {
+	revokeAuthToken();
+	res.setHeader(
+		"Set-Cookie",
+		`${getAuthCookieName()}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`,
+	);
+	res.json({ ok: true });
+});
+
+app.get("/api/auth/status", (req, res) => {
+	const token = getAuthTokenFromCookieHeader(req.headers.cookie);
+	const authenticated = !!token && validateAuthToken(token);
+	res.json({ authenticated });
+});
+
+// --- Auth middleware for /api/app ---
+
+app.use("/api/app", (req, res, next) => {
+	const token = getAuthTokenFromCookieHeader(req.headers.cookie);
+	if (!token || !validateAuthToken(token)) {
+		res.status(401).json({ error: "unauthorized" });
+		return;
+	}
+	next();
+});
+
+// --- Authenticated app routes ---
+
+app.get("/api/app/config", (_req, res) => {
 	res.json({
 		vncHost: VNC_HOST,
 		vncPort: VNC_PORT,
 	});
 });
 
-app.get("/api/display", (_req, res) => {
+app.get("/api/app/display", (_req, res) => {
 	res.json(getVncDisplaySize());
 });
 
-app.get("/api/session", (_req, res) => {
+app.get("/api/app/session", (_req, res) => {
 	res.json({ active: hasActiveSession() });
 });
 
-app.post("/api/session", (req, res) => {
+app.post("/api/app/session", (req, res) => {
 	const force = !!(req.body as { force?: boolean } | undefined)?.force;
 	if (!force && hasActiveSession()) {
 		res.status(409).json({ error: "active_session" });

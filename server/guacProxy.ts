@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import net from "node:net";
 import { type WebSocket, WebSocketServer } from "ws";
+import { getAuthTokenFromCookieHeader, validateAuthToken } from "./auth.js";
 import { registerSessionWebSocket, validateSessionId } from "./session.js";
 
 interface GuacProxyOptions {
@@ -232,6 +233,12 @@ export function attachGuacProxy(
 			socket.destroy();
 			return;
 		}
+		const cookieToken = getAuthTokenFromCookieHeader(req.headers.cookie);
+		if (!cookieToken || !validateAuthToken(cookieToken)) {
+			socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+			socket.destroy();
+			return;
+		}
 		const sessionId = upgradeUrl?.searchParams.get("SESSION_ID") ?? "";
 		if (!validateSessionId(sessionId)) {
 			socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
@@ -254,6 +261,12 @@ export function attachGuacProxy(
 			if (!queryByNormalizedName.has(normalizedName)) {
 				queryByNormalizedName.set(normalizedName, value);
 			}
+		}
+
+		queryByNormalizedName.delete("password");
+		const vncPassword = process.env.VNC_PASSWORD || "";
+		if (vncPassword) {
+			queryByNormalizedName.set("password", vncPassword);
 		}
 
 		const connectionType = queryByNormalizedName.get("type") || "vnc";

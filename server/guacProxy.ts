@@ -294,9 +294,7 @@ export function attachGuacProxy(
 			if (ready) return;
 			console.error("guacd handshake timed out before ready");
 			closeWithGuacStatus(ws, GUAC_STATUS.UPSTREAM_TIMEOUT);
-			if (!tcp.destroyed) {
-				tcp.destroy();
-			}
+			destroyTcp();
 		}, READY_TIMEOUT_MS);
 
 		function sendToGuacd(message: string): void {
@@ -311,6 +309,12 @@ export function attachGuacProxy(
 				const message = pendingClientMessages.shift();
 				if (message) sendToGuacd(message);
 			}
+		}
+
+		function destroyTcp(): void {
+			if (tcp.destroyed) return;
+			tcp.write(toInstruction(["disconnect"]));
+			tcp.destroy();
 		}
 
 		const tcp = net.createConnection(
@@ -391,9 +395,7 @@ export function attachGuacProxy(
 					err instanceof Error ? err.message : String(err),
 				);
 				closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
-				if (!tcp.destroyed) {
-					tcp.destroy();
-				}
+				destroyTcp();
 			}
 		});
 
@@ -426,9 +428,7 @@ export function attachGuacProxy(
 						err instanceof Error ? err.message : String(err),
 					);
 					closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
-					if (!tcp.destroyed) {
-						tcp.destroy();
-					}
+					destroyTcp();
 					return;
 				}
 
@@ -437,9 +437,7 @@ export function attachGuacProxy(
 						"Failed parsing websocket instruction stream from client",
 					);
 					closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
-					if (!tcp.destroyed) {
-						tcp.destroy();
-					}
+					destroyTcp();
 					return;
 				}
 
@@ -467,9 +465,7 @@ export function attachGuacProxy(
 					err instanceof Error ? err.message : String(err),
 				);
 				closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
-				if (!tcp.destroyed) {
-					tcp.destroy();
-				}
+				destroyTcp();
 			}
 		});
 
@@ -481,16 +477,12 @@ export function attachGuacProxy(
 			}
 			clearTimeout(readyTimeout);
 			activeWebSockets.delete(ws);
-			if (!tcp.destroyed) {
-				tcp.destroy();
-			}
+			destroyTcp();
 		});
 
 		ws.on("error", (err) => {
 			console.error("WebSocket error:", err.message);
-			if (!tcp.destroyed) {
-				tcp.destroy();
-			}
+			destroyTcp();
 		});
 	});
 

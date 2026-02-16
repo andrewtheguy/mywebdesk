@@ -31,7 +31,7 @@ export function registerSessionWebSocket(ws: WebSocket): void {
 
 export function evictSession(): void {
 	for (const ws of sessionWebSockets) {
-		ws.close(4001, "Session taken over");
+		ws.terminate();
 	}
 	sessionWebSockets.clear();
 	activeSessionId = null;

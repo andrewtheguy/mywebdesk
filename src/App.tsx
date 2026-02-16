@@ -818,6 +818,7 @@ export default function App() {
 	}, []);
 
 	const handleTakeOverSession = useCallback(() => {
+		disconnect();
 		void (async () => {
 			try {
 				const res = await fetch("/api/app/session", {
@@ -842,7 +843,7 @@ export default function App() {
 			}
 			setSessionPhase("ready");
 		})();
-	}, []);
+	}, [disconnect]);
 
 	const handleLogout = useCallback(() => {
 		disconnect();

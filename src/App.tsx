@@ -353,18 +353,20 @@ export default function App() {
 		!!remoteClipboardPayload &&
 		!isManualClipboardInputActive &&
 		isRemoteClipboardRevealed;
-	const clipboardMetadataText = useMemo(() => {
-		if (!remoteClipboardPayload) return "";
-		const receivedAt = new Date(remoteClipboardPayload.receivedAtMs)
-			.toISOString()
-			.replace("T", " ")
-			.replace("Z", " UTC");
+	const clipboardMetadataLines = useMemo(() => {
+		if (!remoteClipboardPayload) return [] as string[];
+		const receivedAt = new Date(
+			remoteClipboardPayload.receivedAtMs,
+		).toLocaleString(undefined, { dateStyle: "short", timeStyle: "medium" });
 		return [
-			`Checksum (CRC32): ${remoteClipboardPayload.checksumCrc32}`,
-			`Received: ${receivedAt}`,
-			`Content Length: ${remoteClipboardPayload.contentLengthBytes} bytes`,
-		].join("\n");
+			`CRC32 ${remoteClipboardPayload.checksumCrc32}`,
+			`LEN ${remoteClipboardPayload.contentLengthBytes}B`,
+			`AT ${receivedAt}`,
+		];
 	}, [remoteClipboardPayload]);
+	const clipboardMetadataText = useMemo(() => {
+		return clipboardMetadataLines.join("\n");
+	}, [clipboardMetadataLines]);
 	const displayedClipboardText = useMemo(() => {
 		if (isRemoteMetadataMode) return clipboardMetadataText;
 		if (isRemoteRevealedMode) {
@@ -835,29 +837,41 @@ export default function App() {
 			{toolbarOpen && (
 				<div className="toolbar" style={toolbarStyle}>
 					<div className="toolbar-section">
-						<label className="toolbar-label" htmlFor="clipboard-input">
-							Clipboard
-						</label>
+						{isRemoteMetadataMode ? (
+							<span className="toolbar-label">Clipboard</span>
+						) : (
+							<label className="toolbar-label" htmlFor="clipboard-input">
+								Clipboard
+							</label>
+						)}
 						<div className="clipboard-input-shell">
-							<textarea
-								id="clipboard-input"
-								ref={clipboardInputRef}
-								className={`clipboard-input ${isRemoteMetadataMode ? "clipboard-input-metadata" : ""}`}
-								value={displayedClipboardText}
-								onChange={handleClipboardInputChange}
-								onFocus={handleClipboardFocus}
-								onClick={handleClipboardClick}
-								readOnly={isRemoteMetadataMode}
-								rows={3}
-							/>
-							{isRemoteMetadataMode && (
+							{isRemoteMetadataMode ? (
 								<button
 									type="button"
-									className="btn btn-sm clipboard-reveal-cta"
+									className="clipboard-metadata-card"
 									onClick={handleRevealRemoteClipboard}
+									aria-label="Reveal encrypted clipboard content"
 								>
-									Reveal Clipboard
+									{clipboardMetadataLines.map((line) => (
+										<span key={line} className="clipboard-metadata-primary">
+											{line}
+										</span>
+									))}
+									<span className="clipboard-metadata-secondary">
+										Click anywhere to reveal
+									</span>
 								</button>
+							) : (
+								<textarea
+									id="clipboard-input"
+									ref={clipboardInputRef}
+									className="clipboard-input"
+									value={displayedClipboardText}
+									onChange={handleClipboardInputChange}
+									onFocus={handleClipboardFocus}
+									onClick={handleClipboardClick}
+									rows={3}
+								/>
 							)}
 						</div>
 						{clipboardSecurityError && (

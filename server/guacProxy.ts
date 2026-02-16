@@ -367,35 +367,61 @@ export function attachGuacProxy(
 		});
 
 		ws.on("message", (data) => {
-			const message = decodeWebSocketMessageData(
-				data as string | Buffer | ArrayBuffer | Buffer[],
-			);
-			const instructions = parseInstructionMessage(message);
-			if (!instructions) {
-				console.error("Failed parsing websocket instruction stream from client");
+			try {
+				const message = decodeWebSocketMessageData(
+					data as string | Buffer | ArrayBuffer | Buffer[],
+				);
+
+				let instructions: ParsedInstruction[] | null = null;
+				try {
+					instructions = parseInstructionMessage(message);
+				} catch (err) {
+					console.error(
+						"Failed parsing websocket instruction stream from client:",
+						err instanceof Error ? err.message : String(err),
+					);
+					closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
+					if (!tcp.destroyed) {
+						tcp.destroy();
+					}
+					return;
+				}
+
+				if (!instructions) {
+					console.error("Failed parsing websocket instruction stream from client");
+					closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
+					if (!tcp.destroyed) {
+						tcp.destroy();
+					}
+					return;
+				}
+
+				for (const instruction of instructions) {
+					if (isInternalPingInstruction(instruction)) {
+						if (ws.readyState === ws.OPEN) {
+							ws.send(instruction.raw);
+						}
+						continue;
+					}
+
+					const normalizedInstruction = normalizeClientInstruction(instruction);
+					if (!ready) {
+						pendingClientMessages.push(normalizedInstruction);
+						continue;
+					}
+
+					if (!tcp.destroyed) {
+						tcp.write(normalizedInstruction);
+					}
+				}
+			} catch (err) {
+				console.error(
+					"Unhandled error while processing websocket message:",
+					err instanceof Error ? err.message : String(err),
+				);
 				closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
 				if (!tcp.destroyed) {
 					tcp.destroy();
-				}
-				return;
-			}
-
-			for (const instruction of instructions) {
-				if (isInternalPingInstruction(instruction)) {
-					if (ws.readyState === ws.OPEN) {
-						ws.send(instruction.raw);
-					}
-					continue;
-				}
-
-				const normalizedInstruction = normalizeClientInstruction(instruction);
-				if (!ready) {
-					pendingClientMessages.push(normalizedInstruction);
-					continue;
-				}
-
-				if (!tcp.destroyed) {
-					tcp.write(normalizedInstruction);
 				}
 			}
 		});

@@ -199,17 +199,23 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		// Resize with max-height cap
 		function doResize() {
 			const vp = window.visualViewport;
-			const w = Math.round(vp ? vp.width : window.innerWidth);
+			const w = Math.max(1, Math.round(vp ? vp.width : window.innerWidth));
 			let h = Math.round(vp ? vp.height : window.innerHeight);
 			if (h > config.maxHeight) h = config.maxHeight;
+			h = Math.max(1, h);
 			// Account for device pixel ratio for crisp rendering
 			const dpr = window.devicePixelRatio || 1;
 			client.sendSize(Math.round(w * dpr), Math.round(h * dpr));
 		}
 
-		function onResize() {
+		function scheduleResize() {
 			if (resizeTimer.current) clearTimeout(resizeTimer.current);
 			resizeTimer.current = setTimeout(doResize, 300);
+		}
+
+		function handleInitialResize() {
+			doResize();
+			scheduleResize();
 		}
 
 		// Scale display to fit container
@@ -221,9 +227,11 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			display.scale(Math.min(scale, 1));
 		};
 
-		window.addEventListener("resize", onResize);
+		window.addEventListener("load", handleInitialResize);
+		window.addEventListener("resize", scheduleResize);
+		window.addEventListener("orientationchange", scheduleResize);
 		if (window.visualViewport) {
-			window.visualViewport.addEventListener("resize", onResize);
+			window.visualViewport.addEventListener("resize", scheduleResize);
 		}
 
 		// Build connection string
@@ -235,7 +243,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		if (config.vncPassword) params.set("PASSWORD", config.vncPassword);
 
 		client.connect(params.toString());
-		doResize();
+		handleInitialResize();
 
 		// Store cleanup in ref for disconnect
 		(client as unknown as Record<string, unknown>).__cleanup = () => {
@@ -246,9 +254,11 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			displayEl.removeEventListener("mouseup", handleMouse);
 			displayEl.removeEventListener("mousemove", handleMouse);
 			displayEl.removeEventListener("wheel", handleWheel);
-			window.removeEventListener("resize", onResize);
+			window.removeEventListener("load", handleInitialResize);
+			window.removeEventListener("resize", scheduleResize);
+			window.removeEventListener("orientationchange", scheduleResize);
 			if (window.visualViewport) {
-				window.visualViewport.removeEventListener("resize", onResize);
+				window.visualViewport.removeEventListener("resize", scheduleResize);
 			}
 			if (keyboardRef.current) {
 				keyboardRef.current.reset();

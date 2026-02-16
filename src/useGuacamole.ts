@@ -117,6 +117,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		const tunnel = new Guacamole.WebSocketTunnel(wsUrl);
 		const client = new Guacamole.Client(tunnel);
 		clientRef.current = client;
+		let canSendResize = false;
 
 		tunnel.onerror = (status: Guacamole.Status) => {
 			if (connectionId !== connectionIdRef.current || manualDisconnectRef.current) return;
@@ -126,6 +127,11 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 
 		tunnel.onstatechange = (tunnelState: number) => {
 			if (connectionId !== connectionIdRef.current) return;
+			canSendResize = tunnelState === Guacamole.Tunnel.State.OPEN;
+			if (canSendResize) {
+				lastRequestedSize = { width: 0, height: 0 };
+				doResize();
+			}
 			if (tunnelState === Guacamole.Tunnel.State.CLOSED) {
 				if (manualDisconnectRef.current) {
 					setState("disconnected");
@@ -204,6 +210,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		let ignoreSingleTouchUntilRelease = false;
 		let cursorPosition = { x: 0, y: 0 };
 		let hasCursorPosition = false;
+		let lastRequestedSize = { width: 0, height: 0 };
 
 		function clampValue(value: number, min: number, max: number): number {
 			return Math.min(max, Math.max(min, value));
@@ -1148,33 +1155,28 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			e.preventDefault();
 		}
 
-		// Resize using VNC framebuffer dimensions as the minimum, with max-height cap.
+		// Resize to the actual viewport/container size, capped by max-height.
 		function doResize() {
+			if (!canSendResize) return;
+
 			const vp = window.visualViewport;
-			let w = Math.round(vp ? vp.width : window.innerWidth);
-			let h = Math.round(vp ? vp.height : window.innerHeight);
-
-			const remoteWidth = display.getWidth();
-			const remoteHeight = display.getHeight();
-			const minWidth = Math.max(1, remoteWidth > 0 ? remoteWidth : 1);
+			const w = Math.max(1, Math.round(vp ? vp.width : window.innerWidth));
+			let h = Math.max(1, Math.round(vp ? vp.height : window.innerHeight));
 			const maxHeight = Math.max(1, Number.isFinite(config.maxHeight) ? config.maxHeight : 1);
-			const minHeight = Math.max(
-				1,
-				Math.min(maxHeight, remoteHeight > 0 ? remoteHeight : 1),
-			);
-
-			w = Math.max(w, minWidth);
 			if (h > maxHeight) h = maxHeight;
-			h = Math.max(h, minHeight);
+
+			if (lastRequestedSize.width === w && lastRequestedSize.height === h) {
+				return;
+			}
+			lastRequestedSize = { width: w, height: h };
+
 			// Send CSS-pixel viewport size; multiplying by DPR makes Retina displays look zoomed out.
 			client.sendSize(w, h);
-			applyDisplayTransform();
 		}
 
 		function scheduleResize() {
-			applyDisplayTransform();
 			if (resizeTimer.current) clearTimeout(resizeTimer.current);
-			resizeTimer.current = setTimeout(doResize, 300);
+			resizeTimer.current = setTimeout(doResize, 250);
 		}
 
 		function handleInitialResize() {

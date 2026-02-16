@@ -196,13 +196,24 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			Guacamole.Mouse.State,
 		);
 
-		// Resize with max-height cap
+		// Resize using VNC framebuffer dimensions as the minimum, with max-height cap.
 		function doResize() {
 			const vp = window.visualViewport;
-			const w = Math.max(1, Math.round(vp ? vp.width : window.innerWidth));
+			let w = Math.round(vp ? vp.width : window.innerWidth);
 			let h = Math.round(vp ? vp.height : window.innerHeight);
-			if (h > config.maxHeight) h = config.maxHeight;
-			h = Math.max(1, h);
+
+			const remoteWidth = display.getWidth();
+			const remoteHeight = display.getHeight();
+			const minWidth = Math.max(1, remoteWidth > 0 ? remoteWidth : 1);
+			const maxHeight = Math.max(1, Number.isFinite(config.maxHeight) ? config.maxHeight : 1);
+			const minHeight = Math.max(
+				1,
+				Math.min(maxHeight, remoteHeight > 0 ? remoteHeight : 1),
+			);
+
+			w = Math.max(w, minWidth);
+			if (h > maxHeight) h = maxHeight;
+			h = Math.max(h, minHeight);
 			// Send CSS-pixel viewport size; multiplying by DPR makes Retina displays look zoomed out.
 			client.sendSize(w, h);
 		}

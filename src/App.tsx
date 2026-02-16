@@ -23,6 +23,11 @@ interface FabDragState {
 	dragged: boolean;
 }
 
+interface ConnectionTarget {
+	vncHost: string;
+	vncPort: string;
+}
+
 export default function App() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const {
@@ -39,6 +44,8 @@ export default function App() {
 	const [clipboardInput, setClipboardInput] = useState("");
 	const [fabPosition, setFabPosition] = useState<FabPosition | null>(null);
 	const [fabDragging, setFabDragging] = useState(false);
+	const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
+	const [connectionTargetError, setConnectionTargetError] = useState<string | null>(null);
 	const hiddenInputRef = useRef<HTMLInputElement>(null);
 	const clipboardInputRef = useRef<HTMLTextAreaElement>(null);
 	const fabDragStateRef = useRef<FabDragState | null>(null);
@@ -52,13 +59,40 @@ export default function App() {
 		return isIOS || isAndroid;
 	}, []);
 
-	// Auto-connect on mount
+	// Load connection target details for manual connect UI.
 	useEffect(() => {
-		connect();
+		let cancelled = false;
+
+		const loadConnectionTarget = async () => {
+			try {
+				const res = await fetch("/api/config");
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				const data = (await res.json()) as ConnectionTarget;
+				if (cancelled) return;
+				setConnectionTarget({
+					vncHost: data.vncHost,
+					vncPort: data.vncPort,
+				});
+				setConnectionTargetError(null);
+			} catch {
+				if (cancelled) return;
+				setConnectionTargetError("Unable to load connection target");
+			}
+		};
+
+		loadConnectionTarget();
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	// Disconnect on unmount.
+	useEffect(() => {
 		return () => {
 			disconnect();
 		};
-	}, [connect, disconnect]);
+	}, [disconnect]);
 
 	// Sync remote clipboard to input
 	useEffect(() => {
@@ -225,7 +259,7 @@ export default function App() {
 		setToolbarOpen(false);
 	}, [disconnect]);
 
-	const handleReconnect = useCallback(() => {
+	const handleConnect = useCallback(() => {
 		disconnect();
 		connect();
 	}, [disconnect, connect]);
@@ -316,20 +350,27 @@ export default function App() {
 			{/* Connection overlay */}
 			{state !== "connected" && (
 				<div className="overlay">
-					{state === "connecting" && <div className="status">Connecting...</div>}
-					{state === "disconnected" && (
+					{state === "connecting" && (
 						<div className="status">
-							<p>Disconnected</p>
-							<button type="button" onClick={handleReconnect} className="btn">
-								Reconnect
-							</button>
+							<p>Connecting...</p>
+							<p>
+								{connectionTarget
+									? `Target: ${connectionTarget.vncHost}:${connectionTarget.vncPort}`
+									: connectionTargetError || "Target: loading..."}
+							</p>
 						</div>
 					)}
-					{state === "error" && (
-						<div className="status error">
-							<p>Error: {error}</p>
-							<button type="button" onClick={handleReconnect} className="btn">
-								Retry
+					{state !== "connecting" && (
+						<div className="status">
+							<p>{state === "error" ? "Connection failed" : "Ready to connect"}</p>
+							<p>
+								{connectionTarget
+									? `Target: ${connectionTarget.vncHost}:${connectionTarget.vncPort}`
+									: connectionTargetError || "Target: loading..."}
+							</p>
+							{state === "error" && error && <p>Error: {error}</p>}
+							<button type="button" onClick={handleConnect} className="btn">
+								Connect
 							</button>
 						</div>
 					)}

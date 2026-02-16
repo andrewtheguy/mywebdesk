@@ -100,6 +100,13 @@ export default function App() {
 		if (clipboardText) setClipboardInput(clipboardText);
 	}, [clipboardText]);
 
+	// Clear password once a connection succeeds.
+	useEffect(() => {
+		if (state === "connected") {
+			setConnectionPassword("");
+		}
+	}, [state]);
+
 	const toggleToolbar = useCallback(() => {
 		setToolbarOpen((prev) => !prev);
 	}, []);

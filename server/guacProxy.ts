@@ -358,7 +358,7 @@ export function attachGuacProxy(
 
 export function closeAll() {
 	for (const ws of activeWebSockets) {
-		ws.close();
+		ws.terminate();
 	}
 	activeWebSockets.clear();
 	for (const s of activeSockets) {

@@ -1,4 +1,5 @@
 import express from "express";
+import type { Socket } from "node:net";
 import path from "node:path";
 import { attachGuacProxy, closeAll } from "./guacProxy.js";
 
@@ -48,6 +49,14 @@ const server = app.listen(PORT, HOST, () => {
 
 attachGuacProxy(server, { guacdHost: GUACD_HOST, guacdPort: GUACD_PORT });
 
+const activeHttpSockets = new Set<Socket>();
+server.on("connection", (socket) => {
+	activeHttpSockets.add(socket);
+	socket.on("close", () => {
+		activeHttpSockets.delete(socket);
+	});
+});
+
 // Handle server errors
 server.on("error", (err: NodeJS.ErrnoException) => {
 	if (err.code === "EADDRINUSE") {
@@ -61,11 +70,14 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 // Graceful shutdown
 let isShuttingDown = false;
 
-function shutdown() {
-	if (isShuttingDown) return;
+function shutdown(signal: NodeJS.Signals) {
+	if (isShuttingDown) {
+		console.error(`Received ${signal} again, forcing exit`);
+		process.exit(130);
+	}
 	isShuttingDown = true;
 
-	console.log("Shutting down gracefully...");
+	console.log(`Shutting down gracefully (${signal})...`);
 
 	const forceExitTimeout = setTimeout(() => {
 		console.error("Forced exit after timeout");
@@ -73,21 +85,52 @@ function shutdown() {
 	}, 10000);
 	forceExitTimeout.unref();
 
+	// Close proxy websocket/tcp links first so ws sessions do not block server.close().
 	closeAll();
+	for (const socket of activeHttpSockets) {
+		socket.destroy();
+	}
+	activeHttpSockets.clear();
 
 	if (!server.listening) {
 		process.exit(0);
 	}
 
-	server.close((err) => {
-		if (err) {
-			console.error("Error closing server:", err);
-		} else {
-			console.log("Server closed");
+	const closableServer = server as typeof server & {
+		closeAllConnections?: () => void;
+		closeIdleConnections?: () => void;
+	};
+
+	try {
+		server.close((err) => {
+			if (err) {
+				console.error("Error closing server:", err);
+			} else {
+				console.log("Server closed");
+			}
+			process.exit(err ? 1 : 0);
+		});
+	} catch (err) {
+		const code =
+			err && typeof err === "object" && "code" in err
+				? (err as { code?: string }).code
+				: undefined;
+		if (code === "ERR_SERVER_NOT_RUNNING") {
+			console.log("Server already stopped");
+			process.exit(0);
 		}
-		process.exit(err ? 1 : 0);
-	});
+		console.error("Error closing server:", err);
+		process.exit(1);
+	}
+
+	// Best effort immediate closure of lingering keep-alive sockets.
+	try {
+		closableServer.closeIdleConnections?.();
+		closableServer.closeAllConnections?.();
+	} catch (err) {
+		console.error("Error closing lingering HTTP connections:", err);
+	}
 }
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

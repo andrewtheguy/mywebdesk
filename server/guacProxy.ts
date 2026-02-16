@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import net from "node:net";
 import { type WebSocket, WebSocketServer } from "ws";
+import { getAuthTokenFromCookieHeader, validateAuthToken } from "./auth.js";
 import { registerSessionWebSocket, validateSessionId } from "./session.js";
 
 interface GuacProxyOptions {
@@ -232,6 +233,12 @@ export function attachGuacProxy(
 			socket.destroy();
 			return;
 		}
+		const cookieToken = getAuthTokenFromCookieHeader(req.headers.cookie);
+		if (!cookieToken || !validateAuthToken(cookieToken)) {
+			socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+			socket.destroy();
+			return;
+		}
 		const sessionId = upgradeUrl?.searchParams.get("SESSION_ID") ?? "";
 		if (!validateSessionId(sessionId)) {
 			socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
@@ -254,6 +261,12 @@ export function attachGuacProxy(
 			if (!queryByNormalizedName.has(normalizedName)) {
 				queryByNormalizedName.set(normalizedName, value);
 			}
+		}
+
+		queryByNormalizedName.delete("password");
+		const vncPassword = process.env.VNC_PASSWORD || "";
+		if (vncPassword) {
+			queryByNormalizedName.set("password", vncPassword);
 		}
 
 		const connectionType = queryByNormalizedName.get("type") || "vnc";
@@ -281,9 +294,7 @@ export function attachGuacProxy(
 			if (ready) return;
 			console.error("guacd handshake timed out before ready");
 			closeWithGuacStatus(ws, GUAC_STATUS.UPSTREAM_TIMEOUT);
-			if (!tcp.destroyed) {
-				tcp.destroy();
-			}
+			destroyTcp();
 		}, READY_TIMEOUT_MS);
 
 		function sendToGuacd(message: string): void {
@@ -297,6 +308,19 @@ export function attachGuacProxy(
 			while (pendingClientMessages.length > 0) {
 				const message = pendingClientMessages.shift();
 				if (message) sendToGuacd(message);
+			}
+		}
+
+		function destroyTcp(): void {
+			if (tcp.destroyed) return;
+			try {
+				if (tcp.writable) {
+					tcp.write(toInstruction(["disconnect"]));
+				}
+			} catch {
+				// Ignore write failures — socket is being torn down.
+			} finally {
+				tcp.destroy();
 			}
 		}
 
@@ -378,9 +402,7 @@ export function attachGuacProxy(
 					err instanceof Error ? err.message : String(err),
 				);
 				closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
-				if (!tcp.destroyed) {
-					tcp.destroy();
-				}
+				destroyTcp();
 			}
 		});
 
@@ -413,9 +435,7 @@ export function attachGuacProxy(
 						err instanceof Error ? err.message : String(err),
 					);
 					closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
-					if (!tcp.destroyed) {
-						tcp.destroy();
-					}
+					destroyTcp();
 					return;
 				}
 
@@ -424,9 +444,7 @@ export function attachGuacProxy(
 						"Failed parsing websocket instruction stream from client",
 					);
 					closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
-					if (!tcp.destroyed) {
-						tcp.destroy();
-					}
+					destroyTcp();
 					return;
 				}
 
@@ -454,9 +472,7 @@ export function attachGuacProxy(
 					err instanceof Error ? err.message : String(err),
 				);
 				closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
-				if (!tcp.destroyed) {
-					tcp.destroy();
-				}
+				destroyTcp();
 			}
 		});
 
@@ -468,16 +484,12 @@ export function attachGuacProxy(
 			}
 			clearTimeout(readyTimeout);
 			activeWebSockets.delete(ws);
-			if (!tcp.destroyed) {
-				tcp.destroy();
-			}
+			destroyTcp();
 		});
 
 		ws.on("error", (err) => {
 			console.error("WebSocket error:", err.message);
-			if (!tcp.destroyed) {
-				tcp.destroy();
-			}
+			destroyTcp();
 		});
 	});
 

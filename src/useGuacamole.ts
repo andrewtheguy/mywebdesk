@@ -7,7 +7,6 @@ interface Config {
 }
 
 interface ConnectOptions {
-	password?: string;
 	sessionId?: string;
 }
 
@@ -126,7 +125,7 @@ export function useGuacamole(
 			// Fetch config from server
 			let config: Config;
 			try {
-				const res = await fetch("/api/config");
+				const res = await fetch("/api/app/config");
 				if (!res.ok) {
 					const responseBody = (await res.text()).trim();
 					if (connectionId !== connectionIdRef.current) return;
@@ -210,6 +209,7 @@ export function useGuacamole(
 						break;
 					case Guacamole.Client.State.CONNECTED:
 						setState("connected");
+						scheduleResize();
 						break;
 					case Guacamole.Client.State.DISCONNECTED:
 					case Guacamole.Client.State.DISCONNECTING:
@@ -1346,7 +1346,7 @@ export function useGuacamole(
 			params.set("TYPE", "vnc");
 			params.set("HOSTNAME", config.vncHost);
 			params.set("PORT", config.vncPort);
-			if (options?.password) params.set("PASSWORD", options.password);
+			params.set("RESIZE_METHOD", "display-update");
 			if (options?.sessionId) params.set("SESSION_ID", options.sessionId);
 			const vp = window.visualViewport;
 			params.set(

@@ -42,6 +42,7 @@ const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
 const CLIPBOARD_NOTICE_DURATION_MS = 1800;
 const SESSION_CHECK_TIMEOUT_MS = 10000;
+type AuthState = "checking" | "unauthenticated" | "authenticated";
 
 interface RemoteClipboardPayload {
 	encryptedContent: Uint8Array;
@@ -142,12 +143,15 @@ export default function App() {
 	>(null);
 	const [fabPosition, setFabPosition] = useState<FabPosition | null>(null);
 	const [fabDragging, setFabDragging] = useState(false);
+	const [authState, setAuthState] = useState<AuthState>("checking");
+	const [loginSecret, setLoginSecret] = useState("");
+	const [loginError, setLoginError] = useState<string | null>(null);
+	const [loginLoading, setLoginLoading] = useState(false);
 	const [connectionTarget, setConnectionTarget] =
 		useState<ConnectionTarget | null>(null);
 	const [connectionTargetError, setConnectionTargetError] = useState<
 		string | null
 	>(null);
-	const [connectionPassword, setConnectionPassword] = useState("");
 	const [sessionPhase, setSessionPhase] = useState<
 		"checking" | "prompt" | "ready"
 	>("checking");
@@ -178,13 +182,48 @@ export default function App() {
 		return isIOS || isAndroid;
 	}, []);
 
+	// Check auth status on mount.
+	useEffect(() => {
+		let cancelled = false;
+		const checkAuth = async () => {
+			try {
+				const res = await fetch("/api/auth/status");
+				if (cancelled) return;
+				if (res.ok) {
+					const body: unknown = await res.json();
+					if (
+						body &&
+						typeof body === "object" &&
+						"authenticated" in body &&
+						(body as { authenticated: boolean }).authenticated
+					) {
+						setAuthState("authenticated");
+						return;
+					}
+				}
+			} catch {
+				// Network error — treat as unauthenticated.
+			}
+			if (!cancelled) setAuthState("unauthenticated");
+		};
+		void checkAuth();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
 	// Load connection target details for manual connect UI.
 	useEffect(() => {
+		if (authState !== "authenticated") return;
 		let cancelled = false;
 
 		const loadConnectionTarget = async () => {
 			try {
-				const res = await fetch("/api/config");
+				const res = await fetch("/api/app/config");
+				if (res.status === 401) {
+					if (!cancelled) setAuthState("unauthenticated");
+					return;
+				}
 				if (!res.ok) throw new Error(`HTTP ${res.status}`);
 				const payload: unknown = await res.json();
 				if (!payload || typeof payload !== "object") {
@@ -241,10 +280,11 @@ export default function App() {
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [authState]);
 
-	// Session check on mount.
+	// Session check after auth.
 	useEffect(() => {
+		if (authState !== "authenticated") return;
 		let cancelled = false;
 		const abort = new AbortController();
 		const timeout = setTimeout(() => {
@@ -256,9 +296,13 @@ export default function App() {
 
 		const checkSession = async () => {
 			try {
-				const statusRes = await fetch("/api/session", {
+				const statusRes = await fetch("/api/app/session", {
 					signal: abort.signal,
 				});
+				if (statusRes.status === 401) {
+					if (!cancelled) setAuthState("unauthenticated");
+					return;
+				}
 				if (cancelled) return;
 				if (!statusRes.ok) {
 					console.error("Session status check failed:", statusRes.status);
@@ -279,7 +323,7 @@ export default function App() {
 					return;
 				}
 
-				const claimRes = await fetch("/api/session", {
+				const claimRes = await fetch("/api/app/session", {
 					method: "POST",
 					signal: abort.signal,
 				});
@@ -316,7 +360,7 @@ export default function App() {
 			clearTimeout(timeout);
 			abort.abort();
 		};
-	}, []);
+	}, [authState]);
 
 	// Disconnect on unmount.
 	useEffect(() => {
@@ -410,10 +454,18 @@ export default function App() {
 		});
 	}, [clipboardText]);
 
-	// Clear password once a connection succeeds.
+	// Update document title based on connection state.
+	useEffect(() => {
+		if (state === "connected" && connectionTarget) {
+			document.title = `${connectionTarget.vncHost}:${connectionTarget.vncPort} — guac-vnc`;
+		} else {
+			document.title = "guac-vnc";
+		}
+	}, [state, connectionTarget]);
+
+	// Focus hidden input once connected, reset clipboard state on disconnect.
 	useEffect(() => {
 		if (state === "connected") {
-			setConnectionPassword("");
 			hiddenInputRef.current?.focus();
 		} else {
 			setIsDisplayFocused(false);
@@ -767,13 +819,18 @@ export default function App() {
 	}, []);
 
 	const handleTakeOverSession = useCallback(() => {
+		disconnect();
 		void (async () => {
 			try {
-				const res = await fetch("/api/session", {
+				const res = await fetch("/api/app/session", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({ force: true }),
 				});
+				if (res.status === 401) {
+					setAuthState("unauthenticated");
+					return;
+				}
 				if (res.ok) {
 					const { sessionId } = (await res.json()) as { sessionId: string };
 					sessionIdRef.current = sessionId;
@@ -787,21 +844,50 @@ export default function App() {
 			}
 			setSessionPhase("ready");
 		})();
-	}, []);
-
-	const handleDisconnect = useCallback(() => {
-		disconnect();
-		setConnectionPassword("");
-		setToolbarOpen(false);
 	}, [disconnect]);
+
+	const handleLogout = useCallback(() => {
+		disconnect();
+		setToolbarOpen(false);
+		setSessionPhase("checking");
+		void fetch("/api/auth/logout", { method: "POST" }).finally(() => {
+			setAuthState("unauthenticated");
+		});
+	}, [disconnect]);
+
+	const handleLogin = useCallback(
+		async (e: React.FormEvent<HTMLFormElement>) => {
+			e.preventDefault();
+			if (loginLoading) return;
+			setLoginLoading(true);
+			setLoginError(null);
+			try {
+				const res = await fetch("/api/auth/login", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ secret: loginSecret }),
+				});
+				if (res.ok) {
+					setLoginSecret("");
+					setAuthState("authenticated");
+				} else {
+					setLoginError("Invalid secret");
+				}
+			} catch {
+				setLoginError("Network error");
+			} finally {
+				setLoginLoading(false);
+			}
+		},
+		[loginSecret, loginLoading],
+	);
 
 	const handleConnect = useCallback(() => {
 		disconnect();
 		connect({
-			password: connectionPassword,
 			sessionId: sessionIdRef.current ?? undefined,
 		});
-	}, [disconnect, connect, connectionPassword]);
+	}, [disconnect, connect]);
 
 	const handleConnectSubmit = useCallback(
 		(e: React.FormEvent<HTMLFormElement>) => {
@@ -888,71 +974,101 @@ export default function App() {
 				/>
 			</div>
 
-			{/* Connection overlay */}
-			{(sessionPhase !== "ready" || state !== "connected") && (
+			{/* Login overlay */}
+			{authState !== "authenticated" && (
 				<div className="overlay">
-					{sessionPhase === "checking" && (
+					{authState === "checking" && (
 						<div className="status">
-							<p>Checking session...</p>
+							<h1>guac-vnc</h1>
+							<p>Checking authentication...</p>
 						</div>
 					)}
-					{sessionPhase === "prompt" && (
+					{authState === "unauthenticated" && (
 						<div className="status">
-							<p>There is an active session.</p>
-							<p>Continuing will disconnect it.</p>
-							<button
-								type="button"
-								className="btn"
-								onClick={handleTakeOverSession}
-							>
-								Continue
-							</button>
-						</div>
-					)}
-					{sessionPhase === "ready" && state === "connecting" && (
-						<div className="status">
-							<p>Connecting...</p>
-							<p>
-								{connectionTarget
-									? `Target: ${connectionTarget.vncHost}:${connectionTarget.vncPort}`
-									: connectionTargetError || "Target: loading..."}
-							</p>
-						</div>
-					)}
-					{sessionPhase === "ready" && state !== "connecting" && (
-						<div className="status">
-							<p>
-								{state === "error" ? "Connection failed" : "Ready to connect"}
-							</p>
-							<p>
-								{connectionTarget
-									? `Target: ${connectionTarget.vncHost}:${connectionTarget.vncPort}`
-									: connectionTargetError || "Target: loading..."}
-							</p>
-							{state === "error" && error && <p>Error: {error}</p>}
-							<form onSubmit={handleConnectSubmit}>
+							<h1>guac-vnc</h1>
+							<p>Login required</p>
+							{loginError && <p>Error: {loginError}</p>}
+							<form onSubmit={handleLogin}>
 								<label
-									htmlFor="connect-password"
+									htmlFor="login-secret"
 									className="connect-password-label"
 								>
-									VNC Password
+									Site Secret
 								</label>
 								<input
-									id="connect-password"
+									id="login-secret"
 									type="password"
 									className="connect-password-input"
-									value={connectionPassword}
-									onChange={(e) => setConnectionPassword(e.target.value)}
+									value={loginSecret}
+									onChange={(e) => setLoginSecret(e.target.value)}
 									autoComplete="current-password"
+									disabled={loginLoading}
 								/>
-								<button type="submit" className="btn">
-									Connect
+								<button type="submit" className="btn" disabled={loginLoading}>
+									{loginLoading ? "Logging in..." : "Login"}
 								</button>
 							</form>
 						</div>
 					)}
 				</div>
 			)}
+
+			{/* Connection overlay */}
+			{authState === "authenticated" &&
+				(sessionPhase !== "ready" || state !== "connected") && (
+					<div className="overlay">
+						{sessionPhase === "checking" && (
+							<div className="status">
+								<h1>guac-vnc</h1>
+								<p>Checking session...</p>
+							</div>
+						)}
+						{sessionPhase === "prompt" && (
+							<div className="status">
+								<h1>guac-vnc</h1>
+								<p>There is an active session.</p>
+								<p>Continuing will disconnect it.</p>
+								<button
+									type="button"
+									className="btn"
+									onClick={handleTakeOverSession}
+								>
+									Continue
+								</button>
+							</div>
+						)}
+						{sessionPhase === "ready" && state === "connecting" && (
+							<div className="status">
+								<h1>guac-vnc</h1>
+								<p>Connecting...</p>
+								<p>
+									{connectionTarget
+										? `Target: ${connectionTarget.vncHost}:${connectionTarget.vncPort}`
+										: connectionTargetError || "Target: loading..."}
+								</p>
+							</div>
+						)}
+						{sessionPhase === "ready" && state !== "connecting" && (
+							<div className="status">
+								<h1>guac-vnc</h1>
+								<p>
+									{state === "error" ? "Connection failed" : "Ready to connect"}
+								</p>
+								<p>
+									{connectionTarget
+										? `Target: ${connectionTarget.vncHost}:${connectionTarget.vncPort}`
+										: connectionTargetError || "Target: loading..."}
+								</p>
+								{state === "error" && error && <p>Error: {error}</p>}
+								<form onSubmit={handleConnectSubmit}>
+									<button type="submit" className="btn">
+										Connect
+									</button>
+								</form>
+							</div>
+						)}
+					</div>
+				)}
 
 			{/* FAB */}
 			{state === "connected" && (
@@ -1068,9 +1184,9 @@ export default function App() {
 						<button
 							type="button"
 							className="btn btn-sm btn-danger"
-							onClick={handleDisconnect}
+							onClick={handleLogout}
 						>
-							Disconnect
+							Logout
 						</button>
 					</div>
 				</div>

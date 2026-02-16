@@ -313,8 +313,15 @@ export function attachGuacProxy(
 
 		function destroyTcp(): void {
 			if (tcp.destroyed) return;
-			tcp.write(toInstruction(["disconnect"]));
-			tcp.destroy();
+			try {
+				if (tcp.writable) {
+					tcp.write(toInstruction(["disconnect"]));
+				}
+			} catch {
+				// Ignore write failures — socket is being torn down.
+			} finally {
+				tcp.destroy();
+			}
 		}
 
 		const tcp = net.createConnection(

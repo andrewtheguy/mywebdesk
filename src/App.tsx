@@ -146,6 +146,7 @@ export default function App() {
 	const [authState, setAuthState] = useState<AuthState>("checking");
 	const [loginSecret, setLoginSecret] = useState("");
 	const [loginError, setLoginError] = useState<string | null>(null);
+	const [loginLoading, setLoginLoading] = useState(false);
 	const [connectionTarget, setConnectionTarget] =
 		useState<ConnectionTarget | null>(null);
 	const [connectionTargetError, setConnectionTargetError] = useState<
@@ -848,6 +849,7 @@ export default function App() {
 	const handleLogout = useCallback(() => {
 		disconnect();
 		setToolbarOpen(false);
+		setSessionPhase("checking");
 		void fetch("/api/auth/logout", { method: "POST" }).finally(() => {
 			setAuthState("unauthenticated");
 		});
@@ -856,6 +858,8 @@ export default function App() {
 	const handleLogin = useCallback(
 		async (e: React.FormEvent<HTMLFormElement>) => {
 			e.preventDefault();
+			if (loginLoading) return;
+			setLoginLoading(true);
 			setLoginError(null);
 			try {
 				const res = await fetch("/api/auth/login", {
@@ -871,9 +875,11 @@ export default function App() {
 				}
 			} catch {
 				setLoginError("Network error");
+			} finally {
+				setLoginLoading(false);
 			}
 		},
-		[loginSecret],
+		[loginSecret, loginLoading],
 	);
 
 	const handleConnect = useCallback(() => {
@@ -995,9 +1001,10 @@ export default function App() {
 									value={loginSecret}
 									onChange={(e) => setLoginSecret(e.target.value)}
 									autoComplete="current-password"
+									disabled={loginLoading}
 								/>
-								<button type="submit" className="btn">
-									Login
+								<button type="submit" className="btn" disabled={loginLoading}>
+									{loginLoading ? "Logging in..." : "Login"}
 								</button>
 							</form>
 						</div>

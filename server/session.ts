@@ -8,7 +8,10 @@ export function hasActiveSession(): boolean {
 }
 
 export function claimSession(force: boolean): string {
-	if (force) {
+	if (activeSessionId !== null) {
+		if (!force) {
+			throw new Error("A session is already active");
+		}
 		evictSession();
 	}
 	activeSessionId = crypto.randomUUID();

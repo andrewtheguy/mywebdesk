@@ -759,12 +759,15 @@ export default function App() {
 				if (res.ok) {
 					const { sessionId } = (await res.json()) as { sessionId: string };
 					sessionIdRef.current = sessionId;
-					setSessionPhase("ready");
+				} else {
+					console.error("Session takeover failed:", res.status);
+					sessionIdRef.current = null;
 				}
-			} catch {
-				// Fail open for convenience
-				setSessionPhase("ready");
+			} catch (err) {
+				console.error("Session takeover error:", err);
+				sessionIdRef.current = null;
 			}
+			setSessionPhase("ready");
 		})();
 	}, []);
 

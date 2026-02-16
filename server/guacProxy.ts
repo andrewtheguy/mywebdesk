@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import net from "node:net";
-import { WebSocketServer, type WebSocket } from "ws";
+import { type WebSocket, WebSocketServer } from "ws";
 
 interface GuacProxyOptions {
 	guacdHost: string;
@@ -35,7 +35,9 @@ function normalizeParamName(name: string): string {
 	return name.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-function toInstruction(elements: Array<string | number | null | undefined>): string {
+function toInstruction(
+	elements: Array<string | number | null | undefined>,
+): string {
 	const encoded = elements.map((element) => {
 		const value = element == null ? "" : String(element);
 		return `${value.length}.${value}`;
@@ -43,7 +45,10 @@ function toInstruction(elements: Array<string | number | null | undefined>): str
 	return `${encoded.join(",")};`;
 }
 
-function parseOneInstruction(buffer: string, offset: number): ParsedInstruction | null {
+function parseOneInstruction(
+	buffer: string,
+	offset: number,
+): ParsedInstruction | null {
 	const startOffset = offset;
 	const elements: string[] = [];
 
@@ -180,7 +185,8 @@ function buildConnectArgs(
 	serverArgs: string[],
 	queryByNormalizedName: Map<string, string>,
 ): { selectedVersion: string; connectArgs: string[] } {
-	const requestedVersion = queryByNormalizedName.get("version") || "VERSION_1_1_0";
+	const requestedVersion =
+		queryByNormalizedName.get("version") || "VERSION_1_1_0";
 	const versionArgs = serverArgs.filter((arg) => arg.startsWith("VERSION_"));
 
 	let selectedVersion = requestedVersion;
@@ -245,9 +251,13 @@ export function attachGuacProxy(
 		const height = queryByNormalizedName.get("height") || DEFAULT_HEIGHT;
 		const dpi = queryByNormalizedName.get("dpi") || DEFAULT_DPI;
 		const timezone = queryByNormalizedName.get("timezone") || DEFAULT_TIMEZONE;
-		const requestedImageMimetypes = parseList(queryByNormalizedName.get("image") || null);
+		const requestedImageMimetypes = parseList(
+			queryByNormalizedName.get("image") || null,
+		);
 		const imageMimetypes =
-			requestedImageMimetypes.length > 0 ? requestedImageMimetypes : DEFAULT_IMAGE_MIMETYPES;
+			requestedImageMimetypes.length > 0
+				? requestedImageMimetypes
+				: DEFAULT_IMAGE_MIMETYPES;
 		if (DEBUG_GUAC_PROXY) {
 			console.log(
 				`[guac-proxy] ws connected type=${connectionType} host=${queryByNormalizedName.get("hostname") || ""} port=${queryByNormalizedName.get("port") || ""}`,
@@ -283,7 +293,9 @@ export function attachGuacProxy(
 		const tcp = net.createConnection(
 			{ host: options.guacdHost, port: options.guacdPort },
 			() => {
-				console.log(`Connected to guacd (${options.guacdHost}:${options.guacdPort})`);
+				console.log(
+					`Connected to guacd (${options.guacdHost}:${options.guacdPort})`,
+				);
 				sendToGuacd(toInstruction(["select", connectionType]));
 			},
 		);
@@ -336,7 +348,9 @@ export function attachGuacProxy(
 			const chunkText = data.toString("utf-8");
 			tcpChunkCount += 1;
 			if (DEBUG_GUAC_PROXY && tcpChunkCount <= 3) {
-				console.log(`[guac-proxy] <= raw[${tcpChunkCount}] ${JSON.stringify(chunkText.slice(0, 180))}`);
+				console.log(
+					`[guac-proxy] <= raw[${tcpChunkCount}] ${JSON.stringify(chunkText.slice(0, 180))}`,
+				);
 			}
 			try {
 				parseTcpData(chunkText);
@@ -388,7 +402,9 @@ export function attachGuacProxy(
 				}
 
 				if (!instructions) {
-					console.error("Failed parsing websocket instruction stream from client");
+					console.error(
+						"Failed parsing websocket instruction stream from client",
+					);
 					closeWithGuacStatus(ws, GUAC_STATUS.SERVER_ERROR);
 					if (!tcp.destroyed) {
 						tcp.destroy();
@@ -428,7 +444,9 @@ export function attachGuacProxy(
 
 		ws.on("close", (code, reason) => {
 			if (DEBUG_GUAC_PROXY) {
-				console.log(`[guac-proxy] ws closed code=${code} reason=${reason.toString()}`);
+				console.log(
+					`[guac-proxy] ws closed code=${code} reason=${reason.toString()}`,
+				);
 			}
 			clearTimeout(readyTimeout);
 			activeWebSockets.delete(ws);

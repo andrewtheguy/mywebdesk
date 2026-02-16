@@ -70,8 +70,11 @@ export default function App() {
 	const [clipboardInput, setClipboardInput] = useState("");
 	const [fabPosition, setFabPosition] = useState<FabPosition | null>(null);
 	const [fabDragging, setFabDragging] = useState(false);
-	const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
-	const [connectionTargetError, setConnectionTargetError] = useState<string | null>(null);
+	const [connectionTarget, setConnectionTarget] =
+		useState<ConnectionTarget | null>(null);
+	const [connectionTargetError, setConnectionTargetError] = useState<
+		string | null
+	>(null);
 	const [connectionPassword, setConnectionPassword] = useState("");
 	const [viewportState, setViewportState] = useState<ViewportState>(() =>
 		getViewportState(),
@@ -99,7 +102,10 @@ export default function App() {
 				if (!res.ok) throw new Error(`HTTP ${res.status}`);
 				const payload: unknown = await res.json();
 				if (!payload || typeof payload !== "object") {
-					console.error("Invalid /api/config payload (expected object):", payload);
+					console.error(
+						"Invalid /api/config payload (expected object):",
+						payload,
+					);
 					throw new Error("Invalid config response: expected object payload");
 				}
 
@@ -110,7 +116,9 @@ export default function App() {
 
 				if (typeof vncHost !== "string" || vncHost.trim().length === 0) {
 					console.error("Invalid /api/config payload (vncHost):", payload);
-					throw new Error("Invalid config response: vncHost must be a non-empty string");
+					throw new Error(
+						"Invalid config response: vncHost must be a non-empty string",
+					);
 				}
 
 				let normalizedPort: string;
@@ -135,7 +143,9 @@ export default function App() {
 				if (cancelled) return;
 				console.error("Failed loading connection target:", err);
 				setConnectionTargetError(
-					err instanceof Error ? err.message : "Unable to load connection target",
+					err instanceof Error
+						? err.message
+						: "Unable to load connection target",
 				);
 			}
 		};
@@ -204,21 +214,24 @@ export default function App() {
 		};
 	}, []);
 
-	const clampFabPosition = useCallback((x: number, y: number): FabPosition => {
-		const minX = viewportState.offsetX + FAB_MARGIN;
-		const minY = viewportState.offsetY + FAB_MARGIN;
-		const maxX =
-			viewportState.offsetX +
-			Math.max(FAB_MARGIN, viewportState.width - FAB_SIZE - FAB_MARGIN);
-		const maxY =
-			viewportState.offsetY +
-			Math.max(FAB_MARGIN, viewportState.height - FAB_SIZE - FAB_MARGIN);
+	const clampFabPosition = useCallback(
+		(x: number, y: number): FabPosition => {
+			const minX = viewportState.offsetX + FAB_MARGIN;
+			const minY = viewportState.offsetY + FAB_MARGIN;
+			const maxX =
+				viewportState.offsetX +
+				Math.max(FAB_MARGIN, viewportState.width - FAB_SIZE - FAB_MARGIN);
+			const maxY =
+				viewportState.offsetY +
+				Math.max(FAB_MARGIN, viewportState.height - FAB_SIZE - FAB_MARGIN);
 
-		return {
-			x: Math.min(Math.max(x, minX), maxX),
-			y: Math.min(Math.max(y, minY), maxY),
-		};
-	}, [viewportState]);
+			return {
+				x: Math.min(Math.max(x, minX), maxX),
+				y: Math.min(Math.max(y, minY), maxY),
+			};
+		},
+		[viewportState],
+	);
 
 	const getDefaultFabPosition = useCallback((): FabPosition => {
 		return clampFabPosition(
@@ -229,7 +242,11 @@ export default function App() {
 
 	const handleFabPointerDown = useCallback(
 		(e: React.PointerEvent<HTMLButtonElement>) => {
-			if (e.button !== 0 && e.pointerType !== "touch" && e.pointerType !== "pen") {
+			if (
+				e.button !== 0 &&
+				e.pointerType !== "touch" &&
+				e.pointerType !== "pen"
+			) {
 				return;
 			}
 
@@ -261,7 +278,10 @@ export default function App() {
 			}
 
 			if (!dragState.dragged) return;
-			const next = clampFabPosition(dragState.originX + dx, dragState.originY + dy);
+			const next = clampFabPosition(
+				dragState.originX + dx,
+				dragState.originY + dy,
+			);
 			setFabPosition(next);
 			suppressFabClickRef.current = true;
 			e.preventDefault();
@@ -374,7 +394,7 @@ export default function App() {
 			if (!prev) return prev;
 			return clampFabPosition(prev.x, prev.y);
 		});
-	}, [clampFabPosition, viewportState]);
+	}, [clampFabPosition]);
 
 	const resolvedFabPosition = useMemo(
 		() => fabPosition ?? getDefaultFabPosition(),
@@ -434,7 +454,6 @@ export default function App() {
 				autoCapitalize="off"
 				autoCorrect="off"
 				autoComplete="off"
-				aria-hidden="true"
 			/>
 
 			{/* Connection overlay */}
@@ -452,7 +471,9 @@ export default function App() {
 					)}
 					{state !== "connecting" && (
 						<div className="status">
-							<p>{state === "error" ? "Connection failed" : "Ready to connect"}</p>
+							<p>
+								{state === "error" ? "Connection failed" : "Ready to connect"}
+							</p>
 							<p>
 								{connectionTarget
 									? `Target: ${connectionTarget.vncHost}:${connectionTarget.vncPort}`
@@ -460,7 +481,10 @@ export default function App() {
 							</p>
 							{state === "error" && error && <p>Error: {error}</p>}
 							<form onSubmit={handleConnectSubmit}>
-								<label htmlFor="connect-password" className="connect-password-label">
+								<label
+									htmlFor="connect-password"
+									className="connect-password-label"
+								>
 									VNC Password
 								</label>
 								<input
@@ -520,10 +544,18 @@ export default function App() {
 							rows={3}
 						/>
 						<div className="clipboard-actions">
-							<button type="button" className="btn btn-sm" onClick={handlePasteClipboard}>
+							<button
+								type="button"
+								className="btn btn-sm"
+								onClick={handlePasteClipboard}
+							>
 								Send to remote
 							</button>
-							<button type="button" className="btn btn-sm" onClick={handleCopyClipboard}>
+							<button
+								type="button"
+								className="btn btn-sm"
+								onClick={handleCopyClipboard}
+							>
 								Copy
 							</button>
 						</div>
@@ -531,14 +563,26 @@ export default function App() {
 
 					<div className="toolbar-section toolbar-buttons">
 						{showKeyboardShortcut && (
-							<button type="button" className="btn btn-sm" onClick={handleShowKeyboard}>
+							<button
+								type="button"
+								className="btn btn-sm"
+								onClick={handleShowKeyboard}
+							>
 								Show Keyboard
 							</button>
 						)}
-						<button type="button" className="btn btn-sm" onClick={sendCtrlAltDel}>
+						<button
+							type="button"
+							className="btn btn-sm"
+							onClick={sendCtrlAltDel}
+						>
 							Ctrl+Alt+Del
 						</button>
-						<button type="button" className="btn btn-sm btn-danger" onClick={handleDisconnect}>
+						<button
+							type="button"
+							className="btn btn-sm btn-danger"
+							onClick={handleDisconnect}
+						>
 							Disconnect
 						</button>
 					</div>

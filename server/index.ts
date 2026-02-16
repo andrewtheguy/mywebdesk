@@ -1,6 +1,6 @@
-import express from "express";
 import type { Socket } from "node:net";
 import path from "node:path";
+import express from "express";
 import { attachGuacProxy, closeAll } from "./guacProxy.js";
 
 const app = express();

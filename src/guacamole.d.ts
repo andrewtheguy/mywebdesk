@@ -78,7 +78,7 @@ declare module "guacamole-common-js" {
 
 		class Keyboard {
 			constructor(element: HTMLElement | Document);
-			onkeydown: ((keysym: number) => boolean | void) | null;
+			onkeydown: ((keysym: number) => boolean | undefined) | null;
 			onkeyup: ((keysym: number) => void) | null;
 			reset(): void;
 		}

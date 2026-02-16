@@ -251,7 +251,6 @@ export function useGuacamole(
 				keyboardRef.current = keyboard;
 				keyboardTargetRef.current = containerEl;
 			}
-			keyboardRef.current = keyboard;
 			keyboard.onkeydown = (keysym: number) => {
 				clientRef.current?.sendKeyEvent(true, keysym);
 				return true;

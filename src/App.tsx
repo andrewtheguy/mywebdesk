@@ -892,8 +892,9 @@ export default function App() {
 									onClick={handleRevealRemoteClipboard}
 									aria-label="Reveal encrypted clipboard content"
 								>
-									{clipboardMetadataLines.map((line) => (
-										<span key={line} className="clipboard-metadata-primary">
+									{clipboardMetadataLines.map((line, index) => (
+										// biome-ignore lint/suspicious/noArrayIndexKey: static display list
+										<span key={index} className="clipboard-metadata-primary">
 											{line}
 										</span>
 									))}

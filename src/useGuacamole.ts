@@ -209,6 +209,7 @@ export function useGuacamole(
 						break;
 					case Guacamole.Client.State.CONNECTED:
 						setState("connected");
+						scheduleResize();
 						break;
 					case Guacamole.Client.State.DISCONNECTED:
 					case Guacamole.Client.State.DISCONNECTING:
@@ -1345,6 +1346,7 @@ export function useGuacamole(
 			params.set("TYPE", "vnc");
 			params.set("HOSTNAME", config.vncHost);
 			params.set("PORT", config.vncPort);
+			params.set("RESIZE_METHOD", "display-update");
 			if (options?.sessionId) params.set("SESSION_ID", options.sessionId);
 			const vp = window.visualViewport;
 			params.set(

@@ -548,7 +548,7 @@ export default function App() {
 	}, [clampFabPosition, viewportState]);
 
 	const handleFabPointerDown = useCallback(
-		(e: React.PointerEvent<HTMLButtonElement>) => {
+		(e: React.PointerEvent<HTMLDivElement>) => {
 			if (
 				e.button !== 0 &&
 				e.pointerType !== "touch" &&
@@ -573,7 +573,7 @@ export default function App() {
 	);
 
 	const handleFabPointerMove = useCallback(
-		(e: React.PointerEvent<HTMLButtonElement>) => {
+		(e: React.PointerEvent<HTMLDivElement>) => {
 			const dragState = fabDragStateRef.current;
 			if (!dragState || dragState.pointerId !== e.pointerId) return;
 
@@ -605,14 +605,14 @@ export default function App() {
 	}, []);
 
 	const handleFabPointerUp = useCallback(
-		(e: React.PointerEvent<HTMLButtonElement>) => {
+		(e: React.PointerEvent<HTMLDivElement>) => {
 			endFabDrag(e.pointerId);
 		},
 		[endFabDrag],
 	);
 
 	const handleFabPointerCancel = useCallback(
-		(e: React.PointerEvent<HTMLButtonElement>) => {
+		(e: React.PointerEvent<HTMLDivElement>) => {
 			endFabDrag(e.pointerId);
 		},
 		[endFabDrag],
@@ -977,9 +977,8 @@ export default function App() {
 
 			{/* FAB */}
 			{state === "connected" && (
-				<button
-					type="button"
-					tabIndex={-1}
+				<div
+					role="button"
 					className={`fab ${toolbarOpen ? "fab-active" : ""} ${fabDragging ? "fab-dragging" : ""}`}
 					style={{
 						left: `${resolvedFabPosition.x}px`,
@@ -995,7 +994,7 @@ export default function App() {
 					aria-label="Toggle toolbar"
 				>
 					{toolbarOpen ? "\u2715" : "\u2630"}
-				</button>
+				</div>
 			)}
 
 			{/* Toolbar drawer */}

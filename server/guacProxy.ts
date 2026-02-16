@@ -17,12 +17,16 @@ const GUAC_STATUS = {
 };
 
 const READY_TIMEOUT_MS = 15000;
-const DEFAULT_WIDTH = "1024";
-const DEFAULT_HEIGHT = "768";
 const DEFAULT_DPI = "96";
 const DEFAULT_TIMEZONE = "UTC";
 const DEFAULT_IMAGE_MIMETYPES = ["image/png", "image/jpeg"];
 const DEBUG_GUAC_PROXY = process.env.DEBUG_GUAC_PROXY === "1";
+
+let vncDisplaySize = { width: 0, height: 0 };
+
+export function getVncDisplaySize(): { width: number; height: number } {
+	return vncDisplaySize;
+}
 
 interface ParsedInstruction {
 	opcode: string;
@@ -247,8 +251,8 @@ export function attachGuacProxy(
 		}
 
 		const connectionType = queryByNormalizedName.get("type") || "vnc";
-		const width = queryByNormalizedName.get("width") || DEFAULT_WIDTH;
-		const height = queryByNormalizedName.get("height") || DEFAULT_HEIGHT;
+		const width = queryByNormalizedName.get("width") || "";
+		const height = queryByNormalizedName.get("height") || "";
 		const dpi = queryByNormalizedName.get("dpi") || DEFAULT_DPI;
 		const timezone = queryByNormalizedName.get("timezone") || DEFAULT_TIMEZONE;
 		const requestedImageMimetypes = parseList(
@@ -337,6 +341,14 @@ export function attachGuacProxy(
 				}
 				flushPendingMessages();
 				return;
+			}
+
+			if (instruction.opcode === "size" && instruction.args[0] === "0") {
+				const w = Number.parseInt(instruction.args[1], 10);
+				const h = Number.parseInt(instruction.args[2], 10);
+				if (Number.isFinite(w) && Number.isFinite(h)) {
+					vncDisplaySize = { width: w, height: h };
+				}
 			}
 
 			if (ws.readyState === ws.OPEN) {

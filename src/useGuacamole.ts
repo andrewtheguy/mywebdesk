@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface Config {
 	vncHost: string;
 	vncPort: string;
-	maxHeight: number;
 }
 
 interface ConnectOptions {
@@ -272,6 +271,7 @@ export function useGuacamole(
 			let ignoreSingleTouchUntilRelease = false;
 			let cursorPosition = { x: 0, y: 0 };
 			let hasCursorPosition = false;
+			let nativeDisplaySize: { width: number; height: number } | null = null;
 			let lastRequestedSize = { width: 0, height: 0 };
 			let pendingResizeTarget: { width: number; height: number } | null = null;
 			let pendingResizeRetries = 0;
@@ -1256,18 +1256,17 @@ export function useGuacamole(
 				e.preventDefault();
 			}
 
-			// Resize to the actual viewport/container size, capped by max-height.
+			// Resize to the actual viewport/container size, min-clamped to native VNC resolution.
 			function doResize() {
 				if (!canSendResize) return;
 
 				const vp = window.visualViewport;
-				const w = Math.max(1, Math.round(vp ? vp.width : window.innerWidth));
+				let w = Math.max(1, Math.round(vp ? vp.width : window.innerWidth));
 				let h = Math.max(1, Math.round(vp ? vp.height : window.innerHeight));
-				const maxHeight = Math.max(
-					1,
-					Number.isFinite(config.maxHeight) ? config.maxHeight : 1,
-				);
-				if (h > maxHeight) h = maxHeight;
+				if (nativeDisplaySize) {
+					w = Math.max(nativeDisplaySize.width, w);
+					h = Math.max(nativeDisplaySize.height, h);
+				}
 
 				if (lastRequestedSize.width === w && lastRequestedSize.height === h) {
 					return;
@@ -1276,7 +1275,6 @@ export function useGuacamole(
 				pendingResizeTarget = { width: w, height: h };
 				pendingResizeRetries = 0;
 
-				// Send CSS-pixel viewport size; multiplying by DPR makes Retina displays look zoomed out.
 				client.sendSize(w, h);
 				queueResizeRetry();
 			}
@@ -1320,11 +1318,14 @@ export function useGuacamole(
 			}
 
 			// Apply base fit scale and any active pinch zoom/pan.
-			display.onresize = () => {
+			display.onresize = (width: number, height: number) => {
+				if (!nativeDisplaySize) {
+					nativeDisplaySize = { width, height };
+				}
 				if (
 					pendingResizeTarget &&
-					display.getWidth() === pendingResizeTarget.width &&
-					display.getHeight() === pendingResizeTarget.height
+					width === pendingResizeTarget.width &&
+					height === pendingResizeTarget.height
 				) {
 					pendingResizeTarget = null;
 					pendingResizeRetries = 0;
@@ -1346,6 +1347,15 @@ export function useGuacamole(
 			params.set("HOSTNAME", config.vncHost);
 			params.set("PORT", config.vncPort);
 			if (options?.password) params.set("PASSWORD", options.password);
+			const vp = window.visualViewport;
+			params.set(
+				"WIDTH",
+				String(Math.max(1, Math.round(vp ? vp.width : window.innerWidth))),
+			);
+			params.set(
+				"HEIGHT",
+				String(Math.max(1, Math.round(vp ? vp.height : window.innerHeight))),
+			);
 
 			client.connect(params.toString());
 

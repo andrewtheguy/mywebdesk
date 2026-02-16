@@ -1028,6 +1028,7 @@ export default function App() {
 								type="button"
 								className="btn btn-sm"
 								onClick={handlePasteClipboard}
+								disabled={isRemoteMetadataMode}
 							>
 								Send
 							</button>

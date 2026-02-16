@@ -96,8 +96,13 @@
 	touch-action: manipulation;
 }
 
-.btn:active {
+.btn:active:not(:disabled) {
 	background: #3580d4;
+}
+
+.btn:disabled {
+	opacity: 0.4;
+	cursor: default;
 }
 
 .btn-sm {

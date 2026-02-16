@@ -5,7 +5,7 @@ Minimal, mobile-friendly VNC viewer using `guacamole-common-js` with a custom UI
 ## Pain points solved
 
 - **Visible menu toggle** — FAB button always visible (no Ctrl+Alt+Shift or swipe needed)
-- **Consistent touch controls** — one-finger tap click at cursor, edge-pan cursor (drag after hold), two-finger tap right-click, two-finger pan/zoom
+- **Consistent touch controls** — one-finger tap click at cursor, hard-press to hold left-click, second-finger directional drag, two-finger tap right-click, two-finger pan/zoom (outside hold-drag)
 - **Smart sizing** — uses VNC framebuffer size as minimum, with max height cap
 - **Pinch zoom + pan** — two-finger pinch/drag to zoom and move viewport on mobile
 

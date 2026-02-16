@@ -45,6 +45,12 @@ interface MouseGesture {
 	longPressTimer: ReturnType<typeof setTimeout> | null;
 }
 
+interface DragAssistGesture {
+	touchId: number;
+	lastClientX: number;
+	lastClientY: number;
+}
+
 interface TwoFingerTapGesture {
 	startTime: number;
 	firstId: number;
@@ -175,6 +181,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		let panOffset: PanOffset = { x: 0, y: 0 };
 		let pinchGesture: PinchGesture | null = null;
 		let mouseGesture: MouseGesture | null = null;
+		let dragAssistGesture: DragAssistGesture | null = null;
 		let twoFingerTapGesture: TwoFingerTapGesture | null = null;
 		let ignoreSingleTouchUntilRelease = false;
 		let cursorPosition = { x: 0, y: 0 };
@@ -433,11 +440,73 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		function sendDragMoveFromStep(stepX: number, stepY: number): void {
 			const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
 			const baseCursor = getCurrentCursorPosition();
-			const nextCursor = clampCursorToDisplay(
+			const desiredCursor = clampCursorToDisplay(
 				baseCursor.x + stepX / effectiveScale,
 				baseCursor.y + stepY / effectiveScale,
 			);
-			sendMouseFromRemote(nextCursor.x, nextCursor.y, true);
+
+			const visible = getVisibleRemoteBounds(effectiveScale);
+			const constrainedCursor = {
+				x: clampValue(desiredCursor.x, visible.left, visible.right),
+				y: clampValue(desiredCursor.y, visible.top, visible.bottom),
+			};
+			sendMouseFromRemote(constrainedCursor.x, constrainedCursor.y, true);
+
+			const overflowX = desiredCursor.x - constrainedCursor.x;
+			const overflowY = desiredCursor.y - constrainedCursor.y;
+			if (overflowX !== 0 || overflowY !== 0) {
+				applyDisplayTransform(zoomScale, {
+					x: panOffset.x - overflowX * effectiveScale,
+					y: panOffset.y - overflowY * effectiveScale,
+				});
+			}
+		}
+
+		function getDragAssistTouch(touches: TouchList): Touch | null {
+			if (!mouseGesture || mouseGesture.mode !== "drag") {
+				dragAssistGesture = null;
+				return null;
+			}
+
+			if (dragAssistGesture) {
+				const existingTouch = getTouchById(touches, dragAssistGesture.touchId);
+				if (existingTouch && existingTouch.identifier !== mouseGesture.touchId) {
+					return existingTouch;
+				}
+				dragAssistGesture = null;
+			}
+
+			for (let i = 0; i < touches.length; i += 1) {
+				const touch = touches[i];
+				if (touch.identifier === mouseGesture.touchId) continue;
+				dragAssistGesture = {
+					touchId: touch.identifier,
+					lastClientX: touch.clientX,
+					lastClientY: touch.clientY,
+				};
+				return touch;
+			}
+
+			return null;
+		}
+
+		function handleDragAssistMove(touch: Touch): void {
+			if (!dragAssistGesture || dragAssistGesture.touchId !== touch.identifier) {
+				dragAssistGesture = {
+					touchId: touch.identifier,
+					lastClientX: touch.clientX,
+					lastClientY: touch.clientY,
+				};
+				return;
+			}
+
+			const stepX = touch.clientX - dragAssistGesture.lastClientX;
+			const stepY = touch.clientY - dragAssistGesture.lastClientY;
+			dragAssistGesture.lastClientX = touch.clientX;
+			dragAssistGesture.lastClientY = touch.clientY;
+
+			if (stepX === 0 && stepY === 0) return;
+			sendDragMoveFromStep(stepX, stepY);
 		}
 
 		function clearMouseGestureTimer(gesture: MouseGesture | null): void {
@@ -471,6 +540,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			}, DRAG_LONG_PRESS_MS);
 
 			mouseGesture = gesture;
+			dragAssistGesture = null;
 		}
 
 		function finalizeMouseGesture(touch: Touch | null, suppressTap = false): void {
@@ -495,6 +565,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			}
 
 			mouseGesture = null;
+			dragAssistGesture = null;
 		}
 
 		function handleOneFingerMove(touch: Touch): void {
@@ -549,9 +620,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				return;
 			}
 
-			if (gesture.mode === "drag") {
-				sendDragMoveFromStep(stepX, stepY);
-			}
+			if (gesture.mode === "drag") return;
 		}
 
 		function startPinchGesture(first: Touch, second: Touch): void {
@@ -571,6 +640,18 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 
 		function handleViewportTouchStart(e: TouchEvent) {
 			if (e.touches.length >= 2) {
+				if (mouseGesture?.mode === "drag") {
+					ignoreSingleTouchUntilRelease = false;
+					twoFingerTapGesture = null;
+					pinchGesture = null;
+					const assistTouch = getDragAssistTouch(e.touches);
+					if (assistTouch) {
+						handleDragAssistMove(assistTouch);
+					}
+					consumeTouchEvent(e);
+					return;
+				}
+
 				if (mouseGesture) {
 					const activeMouseTouch =
 						getTouchById(e.touches, mouseGesture.touchId) || e.touches[0];
@@ -603,6 +684,34 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 
 		function handleViewportTouchMove(e: TouchEvent) {
 			if (e.touches.length >= 2) {
+				if (mouseGesture?.mode === "drag") {
+					const primaryTouch = getTouchById(e.touches, mouseGesture.touchId);
+					if (!primaryTouch) {
+						const releasedPrimary =
+							getTouchById(e.changedTouches, mouseGesture.touchId) || null;
+						finalizeMouseGesture(releasedPrimary, false);
+						twoFingerTapGesture = null;
+						pinchGesture = null;
+						ignoreSingleTouchUntilRelease = true;
+						consumeTouchEvent(e);
+						return;
+					}
+
+					mouseGesture.lastClientX = primaryTouch.clientX;
+					mouseGesture.lastClientY = primaryTouch.clientY;
+					const assistTouch = getDragAssistTouch(e.touches);
+					if (assistTouch) {
+						handleDragAssistMove(assistTouch);
+					} else {
+						dragAssistGesture = null;
+					}
+					twoFingerTapGesture = null;
+					pinchGesture = null;
+					ignoreSingleTouchUntilRelease = false;
+					consumeTouchEvent(e);
+					return;
+				}
+
 				if (mouseGesture) {
 					const activeMouseTouch =
 						getTouchById(e.touches, mouseGesture.touchId) || e.touches[0];
@@ -662,6 +771,54 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		}
 
 		function handleViewportTouchEnd(e: TouchEvent) {
+			if (e.touches.length === 0) {
+				if (mouseGesture) {
+					const releasedTouch =
+						getTouchById(e.changedTouches, mouseGesture.touchId) || null;
+					finalizeMouseGesture(releasedTouch, false);
+				}
+				dragAssistGesture = null;
+				if (twoFingerTapGesture?.valid) {
+					const duration = Date.now() - twoFingerTapGesture.startTime;
+					if (duration <= TWO_FINGER_TAP_MAX_DURATION_MS) {
+						sendRightClick();
+					}
+				}
+				twoFingerTapGesture = null;
+				pinchGesture = null;
+				ignoreSingleTouchUntilRelease = false;
+				consumeTouchEvent(e);
+				return;
+			}
+
+			if (mouseGesture?.mode === "drag") {
+				const primaryTouch = getTouchById(e.touches, mouseGesture.touchId);
+				if (!primaryTouch) {
+					const releasedTouch =
+						getTouchById(e.changedTouches, mouseGesture.touchId) || null;
+					finalizeMouseGesture(releasedTouch, false);
+					ignoreSingleTouchUntilRelease = true;
+				} else {
+					mouseGesture.lastClientX = primaryTouch.clientX;
+					mouseGesture.lastClientY = primaryTouch.clientY;
+					const assistTouch = getDragAssistTouch(e.touches);
+					if (assistTouch) {
+						dragAssistGesture = {
+							touchId: assistTouch.identifier,
+							lastClientX: assistTouch.clientX,
+							lastClientY: assistTouch.clientY,
+						};
+					} else {
+						dragAssistGesture = null;
+					}
+					ignoreSingleTouchUntilRelease = false;
+				}
+				twoFingerTapGesture = null;
+				pinchGesture = null;
+				consumeTouchEvent(e);
+				return;
+			}
+
 			if (e.touches.length >= 2) {
 				if (mouseGesture) {
 					const releasedTouch =
@@ -679,25 +836,6 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 					twoFingerTapGesture = null;
 					pinchGesture = null;
 				}
-				consumeTouchEvent(e);
-				return;
-			}
-
-			if (e.touches.length === 0) {
-				if (mouseGesture) {
-					const releasedTouch =
-						getTouchById(e.changedTouches, mouseGesture.touchId) || null;
-					finalizeMouseGesture(releasedTouch, false);
-				}
-				if (twoFingerTapGesture?.valid) {
-					const duration = Date.now() - twoFingerTapGesture.startTime;
-					if (duration <= TWO_FINGER_TAP_MAX_DURATION_MS) {
-						sendRightClick();
-					}
-				}
-				twoFingerTapGesture = null;
-				pinchGesture = null;
-				ignoreSingleTouchUntilRelease = false;
 				consumeTouchEvent(e);
 				return;
 			}

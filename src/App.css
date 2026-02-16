@@ -96,15 +96,21 @@
 	font-size: 1.4rem;
 	line-height: 48px;
 	text-align: center;
-	cursor: pointer;
 	z-index: 1000;
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-	touch-action: manipulation;
+	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+	cursor: grab;
 	padding: 0;
 }
 
 .fab:active {
 	background: rgba(53, 128, 212, 0.9);
+}
+
+.fab-dragging {
+	cursor: grabbing;
 }
 
 .fab-active {

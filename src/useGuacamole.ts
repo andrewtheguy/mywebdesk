@@ -203,9 +203,8 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			let h = Math.round(vp ? vp.height : window.innerHeight);
 			if (h > config.maxHeight) h = config.maxHeight;
 			h = Math.max(1, h);
-			// Account for device pixel ratio for crisp rendering
-			const dpr = window.devicePixelRatio || 1;
-			client.sendSize(Math.round(w * dpr), Math.round(h * dpr));
+			// Send CSS-pixel viewport size; multiplying by DPR makes Retina displays look zoomed out.
+			client.sendSize(w, h);
 		}
 
 		function scheduleResize() {

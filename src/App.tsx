@@ -2,6 +2,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import { useGuacamole } from "./useGuacamole";
 
+const FAB_SIZE = 48;
+const FAB_MARGIN = 16;
+const DRAG_THRESHOLD = 6;
+
+interface FabPosition {
+	x: number;
+	y: number;
+}
+
+interface FabDragState {
+	pointerId: number;
+	startX: number;
+	startY: number;
+	originX: number;
+	originY: number;
+	dragged: boolean;
+}
+
 export default function App() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const {
@@ -17,7 +35,11 @@ export default function App() {
 	const [toolbarOpen, setToolbarOpen] = useState(false);
 	const [clipboardInput, setClipboardInput] = useState("");
 	const [keyboardVisible, setKeyboardVisible] = useState(false);
+	const [fabPosition, setFabPosition] = useState<FabPosition | null>(null);
+	const [fabDragging, setFabDragging] = useState(false);
 	const hiddenInputRef = useRef<HTMLInputElement>(null);
+	const fabDragStateRef = useRef<FabDragState | null>(null);
+	const suppressFabClickRef = useRef(false);
 
 	// Auto-connect on mount
 	useEffect(() => {
@@ -35,6 +57,107 @@ export default function App() {
 	const toggleToolbar = useCallback(() => {
 		setToolbarOpen((prev) => !prev);
 	}, []);
+
+	const clampFabPosition = useCallback((x: number, y: number): FabPosition => {
+		const vp = window.visualViewport;
+		const viewportWidth = vp ? vp.width : window.innerWidth;
+		const viewportHeight = vp ? vp.height : window.innerHeight;
+		const offsetX = vp ? vp.offsetLeft : 0;
+		const offsetY = vp ? vp.offsetTop : 0;
+		const minX = offsetX + FAB_MARGIN;
+		const minY = offsetY + FAB_MARGIN;
+		const maxX = offsetX + Math.max(FAB_MARGIN, viewportWidth - FAB_SIZE - FAB_MARGIN);
+		const maxY = offsetY + Math.max(FAB_MARGIN, viewportHeight - FAB_SIZE - FAB_MARGIN);
+
+		return {
+			x: Math.min(Math.max(x, minX), maxX),
+			y: Math.min(Math.max(y, minY), maxY),
+		};
+	}, []);
+
+	const getDefaultFabPosition = useCallback((): FabPosition => {
+		const vp = window.visualViewport;
+		const viewportWidth = vp ? vp.width : window.innerWidth;
+		const viewportHeight = vp ? vp.height : window.innerHeight;
+		const offsetX = vp ? vp.offsetLeft : 0;
+		const offsetY = vp ? vp.offsetTop : 0;
+		return clampFabPosition(
+			offsetX + viewportWidth - FAB_SIZE - FAB_MARGIN,
+			offsetY + viewportHeight - FAB_SIZE - FAB_MARGIN,
+		);
+	}, [clampFabPosition]);
+
+	const handleFabPointerDown = useCallback(
+		(e: React.PointerEvent<HTMLButtonElement>) => {
+			if (e.button !== 0 && e.pointerType !== "touch" && e.pointerType !== "pen") {
+				return;
+			}
+
+			const current = fabPosition ?? getDefaultFabPosition();
+			fabDragStateRef.current = {
+				pointerId: e.pointerId,
+				startX: e.clientX,
+				startY: e.clientY,
+				originX: current.x,
+				originY: current.y,
+				dragged: false,
+			};
+
+			e.currentTarget.setPointerCapture(e.pointerId);
+		},
+		[fabPosition, getDefaultFabPosition],
+	);
+
+	const handleFabPointerMove = useCallback(
+		(e: React.PointerEvent<HTMLButtonElement>) => {
+			const dragState = fabDragStateRef.current;
+			if (!dragState || dragState.pointerId !== e.pointerId) return;
+
+			const dx = e.clientX - dragState.startX;
+			const dy = e.clientY - dragState.startY;
+			if (!dragState.dragged && Math.hypot(dx, dy) >= DRAG_THRESHOLD) {
+				dragState.dragged = true;
+				setFabDragging(true);
+			}
+
+			if (!dragState.dragged) return;
+			const next = clampFabPosition(dragState.originX + dx, dragState.originY + dy);
+			setFabPosition(next);
+			suppressFabClickRef.current = true;
+			e.preventDefault();
+		},
+		[clampFabPosition],
+	);
+
+	const endFabDrag = useCallback((pointerId: number) => {
+		const dragState = fabDragStateRef.current;
+		if (!dragState || dragState.pointerId !== pointerId) return;
+
+		fabDragStateRef.current = null;
+		setFabDragging(false);
+	}, []);
+
+	const handleFabPointerUp = useCallback(
+		(e: React.PointerEvent<HTMLButtonElement>) => {
+			endFabDrag(e.pointerId);
+		},
+		[endFabDrag],
+	);
+
+	const handleFabPointerCancel = useCallback(
+		(e: React.PointerEvent<HTMLButtonElement>) => {
+			endFabDrag(e.pointerId);
+		},
+		[endFabDrag],
+	);
+
+	const handleFabClick = useCallback(() => {
+		if (suppressFabClickRef.current) {
+			suppressFabClickRef.current = false;
+			return;
+		}
+		toggleToolbar();
+	}, [toggleToolbar]);
 
 	const handlePasteClipboard = useCallback(() => {
 		sendClipboard(clipboardInput);
@@ -61,6 +184,27 @@ export default function App() {
 		disconnect();
 		connect();
 	}, [disconnect, connect]);
+
+	useEffect(() => {
+		const keepFabInViewport = () => {
+			setFabPosition((prev) => {
+				if (!prev) return prev;
+				return clampFabPosition(prev.x, prev.y);
+			});
+		};
+
+		window.addEventListener("resize", keepFabInViewport);
+		if (window.visualViewport) {
+			window.visualViewport.addEventListener("resize", keepFabInViewport);
+		}
+
+		return () => {
+			window.removeEventListener("resize", keepFabInViewport);
+			if (window.visualViewport) {
+				window.visualViewport.removeEventListener("resize", keepFabInViewport);
+			}
+		};
+	}, [clampFabPosition]);
 
 	return (
 		<div className="app">
@@ -104,8 +248,22 @@ export default function App() {
 			{state === "connected" && (
 				<button
 					type="button"
-					className={`fab ${toolbarOpen ? "fab-active" : ""}`}
-					onClick={toggleToolbar}
+					className={`fab ${toolbarOpen ? "fab-active" : ""} ${fabDragging ? "fab-dragging" : ""}`}
+					style={
+						fabPosition
+							? {
+									left: `${fabPosition.x}px`,
+									top: `${fabPosition.y}px`,
+									right: "auto",
+									bottom: "auto",
+								}
+							: undefined
+					}
+					onClick={handleFabClick}
+					onPointerDown={handleFabPointerDown}
+					onPointerMove={handleFabPointerMove}
+					onPointerUp={handleFabPointerUp}
+					onPointerCancel={handleFabPointerCancel}
 					aria-label="Toggle toolbar"
 				>
 					{toolbarOpen ? "\u2715" : "\u2630"}

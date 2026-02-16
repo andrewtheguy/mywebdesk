@@ -1,6 +1,5 @@
 import Guacamole from "guacamole-common-js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { attachTouchHandler } from "./touchHandler";
 
 interface Config {
 	vncHost: string;
@@ -18,6 +17,9 @@ export type ConnectionState =
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
+const PAN_ACTIVATION_THRESHOLD_PX = 3;
+const TAP_THRESHOLD_PX = 10;
+const DRAG_LONG_PRESS_MS = 180;
 
 interface PanOffset {
 	x: number;
@@ -29,6 +31,18 @@ interface PinchGesture {
 	initialZoom: number;
 	anchorX: number;
 	anchorY: number;
+}
+
+interface MouseGesture {
+	touchId: number;
+	startClientX: number;
+	startClientY: number;
+	lastClientX: number;
+	lastClientY: number;
+	originPanX: number;
+	originPanY: number;
+	mode: "pending" | "pan" | "drag";
+	longPressTimer: ReturnType<typeof setTimeout> | null;
 }
 
 export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null>) {
@@ -149,9 +163,16 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		let zoomScale = 1;
 		let panOffset: PanOffset = { x: 0, y: 0 };
 		let pinchGesture: PinchGesture | null = null;
+		let mouseGesture: MouseGesture | null = null;
+		let ignoreSingleTouchUntilRelease = false;
 
 		function clampValue(value: number, min: number, max: number): number {
 			return Math.min(max, Math.max(min, value));
+		}
+
+		function consumeTouchEvent(e: TouchEvent): void {
+			e.preventDefault();
+			e.stopImmediatePropagation();
 		}
 
 		function getContainerSize(): { width: number; height: number } {
@@ -214,11 +235,126 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			};
 		}
 
-		function handlePinchStart(e: TouchEvent) {
-			if (e.touches.length !== 2) return;
+		function getTouchById(touches: TouchList, touchId: number): Touch | null {
+			for (let i = 0; i < touches.length; i += 1) {
+				if (touches[i].identifier === touchId) return touches[i];
+			}
+			return null;
+		}
 
-			const first = e.touches[0];
-			const second = e.touches[1];
+		function sendMouseFromClient(
+			clientX: number,
+			clientY: number,
+			leftDown: boolean,
+		): void {
+			const rect = displayEl.getBoundingClientRect();
+			if (rect.width <= 0) return;
+			const scale = display.getWidth() / rect.width;
+			const x = Math.round((clientX - rect.left) * scale);
+			const y = Math.round((clientY - rect.top) * scale);
+			client.sendMouseState(
+				new Guacamole.Mouse.State(x, y, leftDown, false, false, false, false),
+			);
+		}
+
+		function sendTapClick(clientX: number, clientY: number): void {
+			sendMouseFromClient(clientX, clientY, true);
+			sendMouseFromClient(clientX, clientY, false);
+		}
+
+		function clearMouseGestureTimer(gesture: MouseGesture | null): void {
+			if (!gesture?.longPressTimer) return;
+			clearTimeout(gesture.longPressTimer);
+			gesture.longPressTimer = null;
+		}
+
+		function beginMouseGesture(touch: Touch): void {
+			const gesture: MouseGesture = {
+				touchId: touch.identifier,
+				startClientX: touch.clientX,
+				startClientY: touch.clientY,
+				lastClientX: touch.clientX,
+				lastClientY: touch.clientY,
+				originPanX: panOffset.x,
+				originPanY: panOffset.y,
+				mode: "pending",
+				longPressTimer: null,
+			};
+
+			gesture.longPressTimer = setTimeout(() => {
+				if (!mouseGesture || mouseGesture.touchId !== gesture.touchId) return;
+				if (mouseGesture.mode !== "pending") return;
+				const moved = Math.hypot(
+					mouseGesture.lastClientX - mouseGesture.startClientX,
+					mouseGesture.lastClientY - mouseGesture.startClientY,
+				);
+				if (moved >= PAN_ACTIVATION_THRESHOLD_PX) return;
+				mouseGesture.mode = "drag";
+				sendMouseFromClient(
+					mouseGesture.lastClientX,
+					mouseGesture.lastClientY,
+					true,
+				);
+			}, DRAG_LONG_PRESS_MS);
+
+			mouseGesture = gesture;
+		}
+
+		function finalizeMouseGesture(touch: Touch | null, suppressTap = false): void {
+			if (!mouseGesture) return;
+
+			const gesture = mouseGesture;
+			const endX = touch ? touch.clientX : gesture.lastClientX;
+			const endY = touch ? touch.clientY : gesture.lastClientY;
+			clearMouseGestureTimer(gesture);
+
+			if (gesture.mode === "drag") {
+				sendMouseFromClient(endX, endY, false);
+			} else if (!suppressTap && gesture.mode === "pending") {
+				const moved = Math.hypot(
+					endX - gesture.startClientX,
+					endY - gesture.startClientY,
+				);
+				if (moved <= TAP_THRESHOLD_PX) {
+					sendTapClick(endX, endY);
+				}
+			}
+
+			mouseGesture = null;
+		}
+
+		function handleOneFingerMove(touch: Touch): void {
+			if (!mouseGesture) return;
+
+			const gesture = mouseGesture;
+			gesture.lastClientX = touch.clientX;
+			gesture.lastClientY = touch.clientY;
+
+			const dx = touch.clientX - gesture.startClientX;
+			const dy = touch.clientY - gesture.startClientY;
+
+			if (
+				gesture.mode === "pending" &&
+				Math.hypot(dx, dy) >= PAN_ACTIVATION_THRESHOLD_PX
+			) {
+				clearMouseGestureTimer(gesture);
+				gesture.mode = "pan";
+			}
+
+			if (gesture.mode === "pan") {
+				applyDisplayTransform(zoomScale, {
+					x: gesture.originPanX + dx,
+					y: gesture.originPanY + dy,
+				});
+				return;
+			}
+
+			if (gesture.mode === "drag") {
+				sendMouseFromClient(touch.clientX, touch.clientY, true);
+			}
+		}
+
+		function startPinchGesture(first: Touch, second: Touch): void {
 			const initialDistance = getTouchDistance(first, second);
 			if (initialDistance <= 0) return;
 
@@ -231,45 +367,132 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				anchorX: (midpoint.x - panOffset.x) / effectiveScale,
 				anchorY: (midpoint.y - panOffset.y) / effectiveScale,
 			};
-			e.preventDefault();
 		}
 
-		function handlePinchMove(e: TouchEvent) {
-			if (e.touches.length !== 2 || !pinchGesture) return;
-
-			const first = e.touches[0];
-			const second = e.touches[1];
-			const distance = getTouchDistance(first, second);
-			if (distance <= 0) return;
-
-			const midpoint = getTouchMidpoint(first, second);
-			const nextZoom = clampValue(
-				pinchGesture.initialZoom * (distance / pinchGesture.initialDistance),
-				MIN_ZOOM,
-				MAX_ZOOM,
-			);
-			const effectiveScale = fitScale * nextZoom;
-			const nextPan: PanOffset = {
-				x: midpoint.x - pinchGesture.anchorX * effectiveScale,
-				y: midpoint.y - pinchGesture.anchorY * effectiveScale,
-			};
-
-			applyDisplayTransform(nextZoom, nextPan);
-			e.preventDefault();
-		}
-
-		function handlePinchEnd(e: TouchEvent) {
-			if (e.touches.length === 2) {
-				handlePinchStart(e);
+		function handleViewportTouchStart(e: TouchEvent) {
+			if (e.touches.length >= 2) {
+				if (mouseGesture) {
+					const activeMouseTouch =
+						getTouchById(e.touches, mouseGesture.touchId) || e.touches[0];
+					finalizeMouseGesture(activeMouseTouch || null, true);
+				}
+				ignoreSingleTouchUntilRelease = true;
+				startPinchGesture(e.touches[0], e.touches[1]);
+				consumeTouchEvent(e);
 				return;
 			}
-			pinchGesture = null;
+
+			if (e.touches.length === 1) {
+				if (ignoreSingleTouchUntilRelease) {
+					consumeTouchEvent(e);
+					return;
+				}
+				const touch = e.touches[0];
+				pinchGesture = null;
+				beginMouseGesture(touch);
+				consumeTouchEvent(e);
+			}
 		}
 
-		displayEl.addEventListener("touchstart", handlePinchStart, { passive: false });
-		displayEl.addEventListener("touchmove", handlePinchMove, { passive: false });
-		displayEl.addEventListener("touchend", handlePinchEnd, { passive: false });
-		displayEl.addEventListener("touchcancel", handlePinchEnd, { passive: false });
+		function handleViewportTouchMove(e: TouchEvent) {
+			if (e.touches.length >= 2) {
+				if (mouseGesture) {
+					const activeMouseTouch =
+						getTouchById(e.touches, mouseGesture.touchId) || e.touches[0];
+					finalizeMouseGesture(activeMouseTouch || null, true);
+				}
+				ignoreSingleTouchUntilRelease = true;
+				const first = e.touches[0];
+				const second = e.touches[1];
+				if (!pinchGesture) {
+					startPinchGesture(first, second);
+				} else {
+					const distance = getTouchDistance(first, second);
+					if (distance > 0) {
+						const midpoint = getTouchMidpoint(first, second);
+						const nextZoom = clampValue(
+							pinchGesture.initialZoom * (distance / pinchGesture.initialDistance),
+							MIN_ZOOM,
+							MAX_ZOOM,
+						);
+						const effectiveScale = fitScale * nextZoom;
+						const nextPan: PanOffset = {
+							x: midpoint.x - pinchGesture.anchorX * effectiveScale,
+							y: midpoint.y - pinchGesture.anchorY * effectiveScale,
+						};
+
+						applyDisplayTransform(nextZoom, nextPan);
+					}
+				}
+				consumeTouchEvent(e);
+				return;
+			}
+
+			if (e.touches.length !== 1) return;
+			if (ignoreSingleTouchUntilRelease) {
+				consumeTouchEvent(e);
+				return;
+			}
+
+			const activeTouch = mouseGesture
+				? getTouchById(e.touches, mouseGesture.touchId) || e.touches[0]
+				: e.touches[0];
+			if (!mouseGesture) {
+				beginMouseGesture(activeTouch);
+			}
+			handleOneFingerMove(activeTouch);
+			consumeTouchEvent(e);
+		}
+
+		function handleViewportTouchEnd(e: TouchEvent) {
+			if (e.touches.length >= 2) {
+				if (mouseGesture) {
+					const releasedTouch =
+						getTouchById(e.changedTouches, mouseGesture.touchId) ||
+						getTouchById(e.touches, mouseGesture.touchId) ||
+						e.changedTouches[0] ||
+						null;
+					finalizeMouseGesture(releasedTouch, true);
+				}
+				ignoreSingleTouchUntilRelease = true;
+				startPinchGesture(e.touches[0], e.touches[1]);
+				consumeTouchEvent(e);
+				return;
+			}
+
+			if (e.touches.length === 0) {
+				if (mouseGesture) {
+					const releasedTouch =
+						getTouchById(e.changedTouches, mouseGesture.touchId) || null;
+					finalizeMouseGesture(releasedTouch, false);
+				}
+				pinchGesture = null;
+				ignoreSingleTouchUntilRelease = false;
+				consumeTouchEvent(e);
+				return;
+			}
+
+			if (ignoreSingleTouchUntilRelease) {
+				consumeTouchEvent(e);
+				return;
+			}
+
+			if (mouseGesture && !getTouchById(e.touches, mouseGesture.touchId)) {
+				const releasedTouch =
+					getTouchById(e.changedTouches, mouseGesture.touchId) ||
+					e.changedTouches[0] ||
+					null;
+				finalizeMouseGesture(releasedTouch, false);
+			}
+
+			pinchGesture = null;
+			consumeTouchEvent(e);
+		}
+
+		displayEl.addEventListener("touchstart", handleViewportTouchStart, { passive: false });
+		displayEl.addEventListener("touchmove", handleViewportTouchMove, { passive: false });
+		displayEl.addEventListener("touchend", handleViewportTouchEnd, { passive: false });
+		displayEl.addEventListener("touchcancel", handleViewportTouchEnd, { passive: false });
 
 		// Mouse (desktop)
 		displayEl.addEventListener("mousedown", handleMouse);
@@ -318,27 +541,6 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			);
 			e.preventDefault();
 		}
-
-		// Touch handler (mobile)
-		const detachTouch = attachTouchHandler(
-			displayEl,
-			(mouseState) => {
-				// Scale touch coords to display coords
-				const rect = displayEl.getBoundingClientRect();
-				const scale = display.getWidth() / rect.width;
-				const scaled = new Guacamole.Mouse.State(
-					Math.round(mouseState.x * scale),
-					Math.round(mouseState.y * scale),
-					mouseState.left,
-					mouseState.middle,
-					mouseState.right,
-					mouseState.up,
-					mouseState.down,
-				);
-				client.sendMouseState(scaled);
-			},
-			Guacamole.Mouse.State,
-		);
 
 		// Resize using VNC framebuffer dimensions as the minimum, with max-height cap.
 		function doResize() {
@@ -401,11 +603,10 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		(client as unknown as Record<string, unknown>).__cleanup = () => {
 			tunnel.onerror = null;
 			tunnel.onstatechange = null;
-			detachTouch();
-			displayEl.removeEventListener("touchstart", handlePinchStart);
-			displayEl.removeEventListener("touchmove", handlePinchMove);
-			displayEl.removeEventListener("touchend", handlePinchEnd);
-			displayEl.removeEventListener("touchcancel", handlePinchEnd);
+			displayEl.removeEventListener("touchstart", handleViewportTouchStart);
+			displayEl.removeEventListener("touchmove", handleViewportTouchMove);
+			displayEl.removeEventListener("touchend", handleViewportTouchEnd);
+			displayEl.removeEventListener("touchcancel", handleViewportTouchEnd);
 			displayEl.removeEventListener("mousedown", handleMouse);
 			displayEl.removeEventListener("mouseup", handleMouse);
 			displayEl.removeEventListener("mousemove", handleMouse);

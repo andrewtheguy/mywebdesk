@@ -16,6 +16,21 @@ export type ConnectionState =
 	| "disconnected"
 	| "error";
 
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+
+interface PanOffset {
+	x: number;
+	y: number;
+}
+
+interface PinchGesture {
+	initialDistance: number;
+	initialZoom: number;
+	anchorX: number;
+	anchorY: number;
+}
+
 export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null>) {
 	const clientRef = useRef<Guacamole.Client | null>(null);
 	const keyboardRef = useRef<Guacamole.Keyboard | null>(null);
@@ -77,6 +92,9 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		const display = client.getDisplay();
 		const displayEl = display.getElement();
 		displayEl.style.cursor = "none";
+		displayEl.style.touchAction = "none";
+		displayEl.style.transformOrigin = "0 0";
+		displayEl.style.willChange = "transform";
 		container.appendChild(displayEl);
 
 		// State change handler
@@ -126,6 +144,132 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		keyboard.onkeyup = (keysym: number) => {
 			client.sendKeyEvent(false, keysym);
 		};
+
+		let fitScale = 1;
+		let zoomScale = 1;
+		let panOffset: PanOffset = { x: 0, y: 0 };
+		let pinchGesture: PinchGesture | null = null;
+
+		function clampValue(value: number, min: number, max: number): number {
+			return Math.min(max, Math.max(min, value));
+		}
+
+		function getContainerSize(): { width: number; height: number } {
+			return {
+				width: Math.max(1, container.clientWidth),
+				height: Math.max(1, container.clientHeight),
+			};
+		}
+
+		function clampPanToBounds(
+			x: number,
+			y: number,
+			effectiveScale: number,
+		): PanOffset {
+			const { width: containerWidth, height: containerHeight } = getContainerSize();
+			const scaledWidth = display.getWidth() * effectiveScale;
+			const scaledHeight = display.getHeight() * effectiveScale;
+			const minX = Math.min(0, containerWidth - scaledWidth);
+			const minY = Math.min(0, containerHeight - scaledHeight);
+
+			return {
+				x: clampValue(x, minX, 0),
+				y: clampValue(y, minY, 0),
+			};
+		}
+
+		function applyDisplayTransform(
+			nextZoomScale = zoomScale,
+			nextPan = panOffset,
+		): void {
+			const displayWidth = display.getWidth();
+			const displayHeight = display.getHeight();
+			if (displayWidth <= 0 || displayHeight <= 0) return;
+
+			const { width: containerWidth } = getContainerSize();
+			fitScale = Math.min(containerWidth / displayWidth, 1);
+			zoomScale = clampValue(nextZoomScale, MIN_ZOOM, MAX_ZOOM);
+			const effectiveScale = fitScale * zoomScale;
+
+			display.scale(effectiveScale);
+			panOffset = clampPanToBounds(nextPan.x, nextPan.y, effectiveScale);
+			displayEl.style.transform = `translate3d(${panOffset.x}px, ${panOffset.y}px, 0)`;
+		}
+
+		function getTouchDistance(first: Touch, second: Touch): number {
+			return Math.hypot(
+				second.clientX - first.clientX,
+				second.clientY - first.clientY,
+			);
+		}
+
+		function getTouchMidpoint(
+			first: Touch,
+			second: Touch,
+		): { x: number; y: number } {
+			const rect = container.getBoundingClientRect();
+			return {
+				x: (first.clientX + second.clientX) / 2 - rect.left,
+				y: (first.clientY + second.clientY) / 2 - rect.top,
+			};
+		}
+
+		function handlePinchStart(e: TouchEvent) {
+			if (e.touches.length !== 2) return;
+
+			const first = e.touches[0];
+			const second = e.touches[1];
+			const initialDistance = getTouchDistance(first, second);
+			if (initialDistance <= 0) return;
+
+			const midpoint = getTouchMidpoint(first, second);
+			const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
+
+			pinchGesture = {
+				initialDistance,
+				initialZoom: zoomScale,
+				anchorX: (midpoint.x - panOffset.x) / effectiveScale,
+				anchorY: (midpoint.y - panOffset.y) / effectiveScale,
+			};
+			e.preventDefault();
+		}
+
+		function handlePinchMove(e: TouchEvent) {
+			if (e.touches.length !== 2 || !pinchGesture) return;
+
+			const first = e.touches[0];
+			const second = e.touches[1];
+			const distance = getTouchDistance(first, second);
+			if (distance <= 0) return;
+
+			const midpoint = getTouchMidpoint(first, second);
+			const nextZoom = clampValue(
+				pinchGesture.initialZoom * (distance / pinchGesture.initialDistance),
+				MIN_ZOOM,
+				MAX_ZOOM,
+			);
+			const effectiveScale = fitScale * nextZoom;
+			const nextPan: PanOffset = {
+				x: midpoint.x - pinchGesture.anchorX * effectiveScale,
+				y: midpoint.y - pinchGesture.anchorY * effectiveScale,
+			};
+
+			applyDisplayTransform(nextZoom, nextPan);
+			e.preventDefault();
+		}
+
+		function handlePinchEnd(e: TouchEvent) {
+			if (e.touches.length === 2) {
+				handlePinchStart(e);
+				return;
+			}
+			pinchGesture = null;
+		}
+
+		displayEl.addEventListener("touchstart", handlePinchStart, { passive: false });
+		displayEl.addEventListener("touchmove", handlePinchMove, { passive: false });
+		displayEl.addEventListener("touchend", handlePinchEnd, { passive: false });
+		displayEl.addEventListener("touchcancel", handlePinchEnd, { passive: false });
 
 		// Mouse (desktop)
 		displayEl.addEventListener("mousedown", handleMouse);
@@ -216,9 +360,11 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			h = Math.max(h, minHeight);
 			// Send CSS-pixel viewport size; multiplying by DPR makes Retina displays look zoomed out.
 			client.sendSize(w, h);
+			applyDisplayTransform();
 		}
 
 		function scheduleResize() {
+			applyDisplayTransform();
 			if (resizeTimer.current) clearTimeout(resizeTimer.current);
 			resizeTimer.current = setTimeout(doResize, 300);
 		}
@@ -228,13 +374,9 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			scheduleResize();
 		}
 
-		// Scale display to fit container
+		// Apply base fit scale and any active pinch zoom/pan.
 		display.onresize = () => {
-			const displayWidth = display.getWidth();
-			if (displayWidth <= 0) return;
-			const containerWidth = container.offsetWidth;
-			const scale = containerWidth / displayWidth;
-			display.scale(Math.min(scale, 1));
+			applyDisplayTransform();
 		};
 
 		window.addEventListener("load", handleInitialResize);
@@ -260,6 +402,10 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			tunnel.onerror = null;
 			tunnel.onstatechange = null;
 			detachTouch();
+			displayEl.removeEventListener("touchstart", handlePinchStart);
+			displayEl.removeEventListener("touchmove", handlePinchMove);
+			displayEl.removeEventListener("touchend", handlePinchEnd);
+			displayEl.removeEventListener("touchcancel", handlePinchEnd);
 			displayEl.removeEventListener("mousedown", handleMouse);
 			displayEl.removeEventListener("mouseup", handleMouse);
 			displayEl.removeEventListener("mousemove", handleMouse);

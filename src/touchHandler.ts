@@ -2,7 +2,6 @@ import type Guacamole from "guacamole-common-js";
 
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_THRESHOLD_PX = 10;
-const SCROLL_SENSITIVITY = 3;
 
 interface TouchState {
 	startX: number;
@@ -19,7 +18,6 @@ export function attachTouchHandler(
 	MouseState: typeof Guacamole.Mouse.State,
 ): () => void {
 	let touch: TouchState | null = null;
-	let lastTwoFingerY = 0;
 
 	function getCoords(e: Touch): { x: number; y: number } {
 		const rect = element.getBoundingClientRect();
@@ -30,10 +28,9 @@ export function attachTouchHandler(
 	}
 
 	function onTouchStart(e: TouchEvent) {
-		// Two-finger scroll setup
+		// Two-finger gestures are handled by viewport pinch/pan logic.
 		if (e.touches.length === 2) {
 			e.preventDefault();
-			lastTwoFingerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
 			// Release any active single-touch drag
 			if (touch) {
 				clearLongPress();
@@ -93,30 +90,9 @@ export function attachTouchHandler(
 	}
 
 	function onTouchMove(e: TouchEvent) {
-		// Two-finger scroll
+		// Two-finger gestures are handled by viewport pinch/pan logic.
 		if (e.touches.length === 2) {
 			e.preventDefault();
-			const currentY =
-				(e.touches[0].clientY + e.touches[1].clientY) / 2;
-			const deltaY = currentY - lastTwoFingerY;
-			lastTwoFingerY = currentY;
-
-			const { x, y } = getCoords(e.touches[0]);
-			if (deltaY < -SCROLL_SENSITIVITY) {
-				sendMouseState(
-					new MouseState(x, y, false, false, false, true, false),
-				);
-				sendMouseState(
-					new MouseState(x, y, false, false, false, false, false),
-				);
-			} else if (deltaY > SCROLL_SENSITIVITY) {
-				sendMouseState(
-					new MouseState(x, y, false, false, false, false, true),
-				);
-				sendMouseState(
-					new MouseState(x, y, false, false, false, false, false),
-				);
-			}
 			return;
 		}
 

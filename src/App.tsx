@@ -979,6 +979,7 @@ export default function App() {
 				<div className="overlay">
 					{authState === "checking" && (
 						<div className="status">
+							<h1>guac-vnc</h1>
 							<p>Checking authentication...</p>
 						</div>
 					)}
@@ -1018,11 +1019,13 @@ export default function App() {
 					<div className="overlay">
 						{sessionPhase === "checking" && (
 							<div className="status">
+								<h1>guac-vnc</h1>
 								<p>Checking session...</p>
 							</div>
 						)}
 						{sessionPhase === "prompt" && (
 							<div className="status">
+								<h1>guac-vnc</h1>
 								<p>There is an active session.</p>
 								<p>Continuing will disconnect it.</p>
 								<button
@@ -1036,6 +1039,7 @@ export default function App() {
 						)}
 						{sessionPhase === "ready" && state === "connecting" && (
 							<div className="status">
+								<h1>guac-vnc</h1>
 								<p>Connecting...</p>
 								<p>
 									{connectionTarget
@@ -1046,6 +1050,7 @@ export default function App() {
 						)}
 						{sessionPhase === "ready" && state !== "connecting" && (
 							<div className="status">
+								<h1>guac-vnc</h1>
 								<p>
 									{state === "error" ? "Connection failed" : "Ready to connect"}
 								</p>

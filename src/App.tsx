@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { useGuacamole } from "./useGuacamole";
 
@@ -34,13 +34,20 @@ export default function App() {
 
 	const [toolbarOpen, setToolbarOpen] = useState(false);
 	const [clipboardInput, setClipboardInput] = useState("");
-	const [keyboardVisible, setKeyboardVisible] = useState(false);
 	const [fabPosition, setFabPosition] = useState<FabPosition | null>(null);
 	const [fabDragging, setFabDragging] = useState(false);
 	const hiddenInputRef = useRef<HTMLInputElement>(null);
 	const clipboardInputRef = useRef<HTMLTextAreaElement>(null);
 	const fabDragStateRef = useRef<FabDragState | null>(null);
 	const suppressFabClickRef = useRef(false);
+	const showKeyboardShortcut = useMemo(() => {
+		const ua = navigator.userAgent;
+		const isIPadOS =
+			navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+		const isIOS = /iPhone|iPad|iPod/i.test(ua) || isIPadOS;
+		const isAndroid = /Android/i.test(ua);
+		return isIOS || isAndroid;
+	}, []);
 
 	// Auto-connect on mount
 	useEffect(() => {
@@ -206,16 +213,9 @@ export default function App() {
 		}
 	}, [clipboardInput, selectClipboardText]);
 
-	const toggleKeyboard = useCallback(() => {
-		setKeyboardVisible((prev) => {
-			const next = !prev;
-			if (next && hiddenInputRef.current) {
-				hiddenInputRef.current.focus();
-			} else if (hiddenInputRef.current) {
-				hiddenInputRef.current.blur();
-			}
-			return next;
-		});
+	const handleShowKeyboard = useCallback(() => {
+		hiddenInputRef.current?.focus();
+		setToolbarOpen(false);
 	}, []);
 
 	const handleDisconnect = useCallback(() => {
@@ -313,9 +313,9 @@ export default function App() {
 				</button>
 			)}
 
-			{/* Toolbar drawer */}
-			{toolbarOpen && (
-				<div className="toolbar">
+				{/* Toolbar drawer */}
+				{toolbarOpen && (
+					<div className="toolbar">
 						<div className="toolbar-section">
 							<label className="toolbar-label" htmlFor="clipboard-input">
 								Clipboard
@@ -340,19 +340,21 @@ export default function App() {
 							</div>
 						</div>
 
-					<div className="toolbar-section toolbar-buttons">
-						<button type="button" className="btn btn-sm" onClick={toggleKeyboard}>
-							{keyboardVisible ? "Hide Keyboard" : "Show Keyboard"}
-						</button>
-						<button type="button" className="btn btn-sm" onClick={sendCtrlAltDel}>
-							Ctrl+Alt+Del
-						</button>
-						<button type="button" className="btn btn-sm btn-danger" onClick={handleDisconnect}>
-							Disconnect
-						</button>
+						<div className="toolbar-section toolbar-buttons">
+							{showKeyboardShortcut && (
+								<button type="button" className="btn btn-sm" onClick={handleShowKeyboard}>
+									Show Keyboard
+								</button>
+							)}
+							<button type="button" className="btn btn-sm" onClick={sendCtrlAltDel}>
+								Ctrl+Alt+Del
+							</button>
+							<button type="button" className="btn btn-sm btn-danger" onClick={handleDisconnect}>
+								Disconnect
+							</button>
+						</div>
 					</div>
-				</div>
-			)}
+				)}
 		</div>
 	);
 }

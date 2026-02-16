@@ -1412,13 +1412,18 @@ export function useGuacamole(
 		setState("disconnected");
 	}, []);
 
-	const sendClipboard = useCallback((text: string) => {
+	const sendClipboard = useCallback((text: string): boolean => {
 		const client = clientRef.current;
-		if (!client) return;
-		const stream = client.createClipboardStream("text/plain");
-		const writer = new Guacamole.StringWriter(stream);
-		writer.sendText(text);
-		writer.sendEnd();
+		if (!client) return false;
+		try {
+			const stream = client.createClipboardStream("text/plain");
+			const writer = new Guacamole.StringWriter(stream);
+			writer.sendText(text);
+			writer.sendEnd();
+			return true;
+		} catch {
+			return false;
+		}
 	}, []);
 
 	const sendKey = useCallback((keysym: number, pressed: boolean) => {

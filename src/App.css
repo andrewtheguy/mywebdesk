@@ -260,3 +260,19 @@
 	flex-direction: column;
 	gap: 8px;
 }
+
+.clipboard-notice {
+	position: fixed;
+	left: 50%;
+	bottom: 20px;
+	transform: translateX(-50%);
+	padding: 8px 12px;
+	border-radius: 6px;
+	background: rgba(20, 20, 20, 0.92);
+	border: 1px solid #4a9eff;
+	color: #fff;
+	font-size: 0.75rem;
+	font-family: system-ui, sans-serif;
+	z-index: 2100;
+	white-space: nowrap;
+}

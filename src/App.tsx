@@ -12,6 +12,7 @@ const CTRL_KEYSYM = 0xffe3;
 const V_KEYSYM = 0x0076;
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
+const CLIPBOARD_NOTICE_DURATION_MS = 1800;
 
 interface RemoteClipboardPayload {
 	encryptedContent: Uint8Array;
@@ -122,6 +123,9 @@ export default function App() {
 		string | null
 	>(null);
 	const [connectionPassword, setConnectionPassword] = useState("");
+	const [clipboardSendNotice, setClipboardSendNotice] = useState<string | null>(
+		null,
+	);
 	const [isDisplayFocused, setIsDisplayFocused] = useState(false);
 	const [viewportState, setViewportState] = useState<ViewportState>(() =>
 		getViewportState(),
@@ -131,6 +135,9 @@ export default function App() {
 	const lastSyncedRemoteClipboardRef = useRef("");
 	const hasProcessedRemoteClipboardRef = useRef(false);
 	const clipboardCryptoKeyRef = useRef<CryptoKey | null>(null);
+	const clipboardSendNoticeTimerRef = useRef<ReturnType<
+		typeof setTimeout
+	> | null>(null);
 	const fabDragStateRef = useRef<FabDragState | null>(null);
 	const suppressFabClickRef = useRef(false);
 	const showKeyboardShortcut = useMemo(() => {
@@ -334,6 +341,25 @@ export default function App() {
 
 	const toggleToolbar = useCallback(() => {
 		setToolbarOpen((prev) => !prev);
+	}, []);
+
+	const showClipboardNotice = useCallback((message: string) => {
+		setClipboardSendNotice(message);
+		if (clipboardSendNoticeTimerRef.current) {
+			clearTimeout(clipboardSendNoticeTimerRef.current);
+		}
+		clipboardSendNoticeTimerRef.current = setTimeout(() => {
+			setClipboardSendNotice(null);
+			clipboardSendNoticeTimerRef.current = null;
+		}, CLIPBOARD_NOTICE_DURATION_MS);
+	}, []);
+
+	useEffect(() => {
+		return () => {
+			if (clipboardSendNoticeTimerRef.current) {
+				clearTimeout(clipboardSendNoticeTimerRef.current);
+			}
+		};
 	}, []);
 
 	useEffect(() => {
@@ -603,13 +629,23 @@ export default function App() {
 
 	const handlePasteClipboard = useCallback(() => {
 		void (async () => {
+			let sent = false;
 			if (isRemoteMetadataMode || isRemoteRevealedMode) {
 				const remoteText = await decryptCurrentRemoteClipboard();
-				if (remoteText === null) return;
-				sendClipboard(remoteText);
+				if (remoteText === null) {
+					showClipboardNotice("Clipboard send failed");
+					return;
+				}
+				sent = sendClipboard(remoteText);
+			} else {
+				sent = sendClipboard(clipboardInput);
+			}
+			if (!sent) {
+				showClipboardNotice("Clipboard send failed");
 				return;
 			}
-			sendClipboard(clipboardInput);
+			setToolbarOpen(false);
+			showClipboardNotice("Clipboard sent to remote");
 		})();
 	}, [
 		clipboardInput,
@@ -617,6 +653,7 @@ export default function App() {
 		isRemoteMetadataMode,
 		isRemoteRevealedMode,
 		sendClipboard,
+		showClipboardNotice,
 	]);
 
 	const selectClipboardText = useCallback((target: HTMLTextAreaElement) => {
@@ -923,6 +960,12 @@ export default function App() {
 						</button>
 					</div>
 				</div>
+			)}
+
+			{clipboardSendNotice && (
+				<output className="clipboard-notice" aria-live="polite">
+					{clipboardSendNotice}
+				</output>
 			)}
 		</div>
 	);

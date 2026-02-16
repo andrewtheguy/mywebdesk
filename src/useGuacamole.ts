@@ -4,8 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface Config {
 	vncHost: string;
 	vncPort: string;
-	vncPassword: string;
 	maxHeight: number;
+}
+
+interface ConnectOptions {
+	password?: string;
 }
 
 export type ConnectionState =
@@ -86,7 +89,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 	const [clipboardText, setClipboardText] = useState("");
 	const resizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	const connect = useCallback(async () => {
+	const connect = useCallback(async (options?: ConnectOptions) => {
 		const container = containerRef.current;
 		if (!container) return;
 		const connectionId = connectionIdRef.current + 1;
@@ -1197,7 +1200,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		params.set("TYPE", "vnc");
 		params.set("HOSTNAME", config.vncHost);
 		params.set("PORT", config.vncPort);
-		if (config.vncPassword) params.set("PASSWORD", config.vncPassword);
+		if (options?.password) params.set("PASSWORD", options.password);
 
 		client.connect(params.toString());
 		handleInitialResize();

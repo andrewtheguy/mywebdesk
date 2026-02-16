@@ -17,14 +17,12 @@ const GUACD_HOST = process.env.GUACD_HOST || "127.0.0.1";
 const GUACD_PORT = Number.parseInt(process.env.GUACD_PORT || "14822", 10);
 const VNC_HOST = process.env.VNC_HOST || "169.254.0.1";
 const VNC_PORT = process.env.VNC_PORT || "5901";
-const VNC_PASSWORD = process.env.VNC_PASSWORD || "";
 const MAX_HEIGHT = Number.parseInt(process.env.MAX_HEIGHT || "1200", 10);
 
 app.get("/api/config", (_req, res) => {
 	res.json({
 		vncHost: VNC_HOST,
 		vncPort: VNC_PORT,
-		vncPassword: VNC_PASSWORD,
 		maxHeight: MAX_HEIGHT,
 	});
 });

@@ -46,6 +46,7 @@ export default function App() {
 	const [fabDragging, setFabDragging] = useState(false);
 	const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
 	const [connectionTargetError, setConnectionTargetError] = useState<string | null>(null);
+	const [connectionPassword, setConnectionPassword] = useState("");
 	const hiddenInputRef = useRef<HTMLInputElement>(null);
 	const clipboardInputRef = useRef<HTMLTextAreaElement>(null);
 	const fabDragStateRef = useRef<FabDragState | null>(null);
@@ -256,13 +257,22 @@ export default function App() {
 
 	const handleDisconnect = useCallback(() => {
 		disconnect();
+		setConnectionPassword("");
 		setToolbarOpen(false);
 	}, [disconnect]);
 
 	const handleConnect = useCallback(() => {
 		disconnect();
-		connect();
-	}, [disconnect, connect]);
+		connect({ password: connectionPassword });
+	}, [disconnect, connect, connectionPassword]);
+
+	const handleConnectSubmit = useCallback(
+		(e: React.FormEvent<HTMLFormElement>) => {
+			e.preventDefault();
+			handleConnect();
+		},
+		[handleConnect],
+	);
 
 	useEffect(() => {
 		const keepFabInViewport = () => {
@@ -369,9 +379,22 @@ export default function App() {
 									: connectionTargetError || "Target: loading..."}
 							</p>
 							{state === "error" && error && <p>Error: {error}</p>}
-							<button type="button" onClick={handleConnect} className="btn">
-								Connect
-							</button>
+							<form onSubmit={handleConnectSubmit}>
+								<label htmlFor="connect-password" className="connect-password-label">
+									VNC Password
+								</label>
+								<input
+									id="connect-password"
+									type="password"
+									className="connect-password-input"
+									value={connectionPassword}
+									onChange={(e) => setConnectionPassword(e.target.value)}
+									autoComplete="current-password"
+								/>
+								<button type="submit" className="btn">
+									Connect
+								</button>
+							</form>
 						</div>
 					)}
 				</div>

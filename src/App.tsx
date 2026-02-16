@@ -555,7 +555,9 @@ export default function App() {
 	}, []);
 
 	const handleDisplayPointerDown = useCallback(() => {
-		hiddenInputRef.current?.focus();
+		// Focus the container (not the hidden input) so keyboard events are
+		// captured without triggering the mobile soft keyboard on every tap/pan.
+		containerRef.current?.focus();
 	}, []);
 
 	const handleDisplayKeyDownCapture = useCallback(
@@ -784,6 +786,7 @@ export default function App() {
 				className="display-container"
 				role="application"
 				aria-label="Remote display"
+				tabIndex={-1}
 				onFocus={handleDisplayFocus}
 				onBlur={handleDisplayBlur}
 				onPointerDown={handleDisplayPointerDown}

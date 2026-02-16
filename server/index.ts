@@ -1,5 +1,6 @@
-import express from "express";
+import type { Socket } from "node:net";
 import path from "node:path";
+import express from "express";
 import { attachGuacProxy, closeAll } from "./guacProxy.js";
 
 const app = express();
@@ -16,14 +17,12 @@ const GUACD_HOST = process.env.GUACD_HOST || "127.0.0.1";
 const GUACD_PORT = Number.parseInt(process.env.GUACD_PORT || "14822", 10);
 const VNC_HOST = process.env.VNC_HOST || "169.254.0.1";
 const VNC_PORT = process.env.VNC_PORT || "5901";
-const VNC_PASSWORD = process.env.VNC_PASSWORD || "";
 const MAX_HEIGHT = Number.parseInt(process.env.MAX_HEIGHT || "1200", 10);
 
 app.get("/api/config", (_req, res) => {
 	res.json({
 		vncHost: VNC_HOST,
 		vncPort: VNC_PORT,
-		vncPassword: VNC_PASSWORD,
 		maxHeight: MAX_HEIGHT,
 	});
 });
@@ -48,6 +47,14 @@ const server = app.listen(PORT, HOST, () => {
 
 attachGuacProxy(server, { guacdHost: GUACD_HOST, guacdPort: GUACD_PORT });
 
+const activeHttpSockets = new Set<Socket>();
+server.on("connection", (socket) => {
+	activeHttpSockets.add(socket);
+	socket.on("close", () => {
+		activeHttpSockets.delete(socket);
+	});
+});
+
 // Handle server errors
 server.on("error", (err: NodeJS.ErrnoException) => {
 	if (err.code === "EADDRINUSE") {
@@ -61,11 +68,14 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 // Graceful shutdown
 let isShuttingDown = false;
 
-function shutdown() {
-	if (isShuttingDown) return;
+function shutdown(signal: NodeJS.Signals) {
+	if (isShuttingDown) {
+		console.error(`Received ${signal} again, forcing exit`);
+		process.exit(130);
+	}
 	isShuttingDown = true;
 
-	console.log("Shutting down gracefully...");
+	console.log(`Shutting down gracefully (${signal})...`);
 
 	const forceExitTimeout = setTimeout(() => {
 		console.error("Forced exit after timeout");
@@ -73,21 +83,58 @@ function shutdown() {
 	}, 10000);
 	forceExitTimeout.unref();
 
+	// Close proxy websocket/tcp links first so ws sessions do not block server.close().
 	closeAll();
 
 	if (!server.listening) {
 		process.exit(0);
 	}
 
-	server.close((err) => {
-		if (err) {
-			console.error("Error closing server:", err);
-		} else {
-			console.log("Server closed");
+	const closableServer = server as typeof server & {
+		closeAllConnections?: () => void;
+		closeIdleConnections?: () => void;
+	};
+
+	try {
+		server.close((err) => {
+			if (err) {
+				console.error("Error closing server:", err);
+			} else {
+				console.log("Server closed");
+			}
+			process.exit(err ? 1 : 0);
+		});
+	} catch (err) {
+		const code =
+			err && typeof err === "object" && "code" in err
+				? (err as { code?: string }).code
+				: undefined;
+		if (code === "ERR_SERVER_NOT_RUNNING") {
+			console.log("Server already stopped");
+			process.exit(0);
 		}
-		process.exit(err ? 1 : 0);
-	});
+		console.error("Error closing server:", err);
+		process.exit(1);
+	}
+
+	// Best effort immediate closure of lingering keep-alive sockets.
+	try {
+		closableServer.closeIdleConnections?.();
+		closableServer.closeAllConnections?.();
+	} catch (err) {
+		console.error("Error closing lingering HTTP connections:", err);
+	}
+
+	// Fallback: force-destroy tracked sockets if graceful close did not drain quickly.
+	const destroyLingeringSocketsTimeout = setTimeout(() => {
+		if (activeHttpSockets.size === 0) return;
+		for (const socket of activeHttpSockets) {
+			socket.destroy();
+		}
+		activeHttpSockets.clear();
+	}, 1200);
+	destroyLingeringSocketsTimeout.unref();
 }
 
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

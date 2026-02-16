@@ -51,6 +51,33 @@
 	margin: 0 0 16px;
 }
 
+.connect-password-label {
+	display: block;
+	margin: 0 auto 6px;
+	width: min(320px, 80vw);
+	text-align: left;
+	font-size: 0.9rem;
+}
+
+.connect-password-input {
+	display: block;
+	box-sizing: border-box;
+	width: min(320px, 80vw);
+	margin: 0 auto 16px;
+	padding: 10px;
+	border: 1px solid #555;
+	border-radius: 6px;
+	background: #1a1a1a;
+	color: #fff;
+	font-size: 0.95rem;
+	font-family: system-ui, sans-serif;
+}
+
+.connect-password-input:focus {
+	outline: none;
+	border-color: #4a9eff;
+}
+
 /* Buttons */
 .btn {
 	display: inline-block;
@@ -85,7 +112,7 @@
 /* FAB */
 .fab {
 	position: fixed;
-	bottom: 16px;
+	top: 16px;
 	right: 16px;
 	width: 48px;
 	height: 48px;
@@ -96,15 +123,21 @@
 	font-size: 1.4rem;
 	line-height: 48px;
 	text-align: center;
-	cursor: pointer;
 	z-index: 1000;
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-	touch-action: manipulation;
+	touch-action: none;
+	user-select: none;
+	-webkit-user-select: none;
+	cursor: grab;
 	padding: 0;
 }
 
 .fab:active {
 	background: rgba(53, 128, 212, 0.9);
+}
+
+.fab-dragging {
+	cursor: grabbing;
 }
 
 .fab-active {
@@ -114,7 +147,7 @@
 /* Toolbar drawer */
 .toolbar {
 	position: fixed;
-	bottom: 76px;
+	top: 76px;
 	right: 16px;
 	width: 260px;
 	max-height: calc(100vh - 100px);
@@ -162,6 +195,15 @@
 .clipboard-input:focus {
 	outline: none;
 	border-color: #4a9eff;
+}
+
+.clipboard-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.clipboard-actions .btn {
+	flex: 1;
 }
 
 .toolbar-buttons {

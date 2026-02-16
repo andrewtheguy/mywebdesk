@@ -2,8 +2,10 @@ import type { Socket } from "node:net";
 import path from "node:path";
 import express from "express";
 import { attachGuacProxy, closeAll, getVncDisplaySize } from "./guacProxy.js";
+import { claimSession, hasActiveSession } from "./session.js";
 
 const app = express();
+app.use(express.json());
 const isProduction = process.env.NODE_ENV === "production";
 const PORT = Number.parseInt(
 	isProduction
@@ -27,6 +29,20 @@ app.get("/api/config", (_req, res) => {
 
 app.get("/api/display", (_req, res) => {
 	res.json(getVncDisplaySize());
+});
+
+app.get("/api/session", (_req, res) => {
+	res.json({ active: hasActiveSession() });
+});
+
+app.post("/api/session", (req, res) => {
+	const force = !!(req.body as { force?: boolean } | undefined)?.force;
+	if (!force && hasActiveSession()) {
+		res.status(409).json({ error: "active_session" });
+		return;
+	}
+	const sessionId = claimSession(force);
+	res.json({ sessionId });
 });
 
 // Serve static frontend assets (production build)

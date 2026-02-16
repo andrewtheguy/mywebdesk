@@ -13,6 +13,7 @@ const V_KEYSYM = 0x0076;
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
 const CLIPBOARD_NOTICE_DURATION_MS = 1800;
+const SESSION_CHECK_TIMEOUT_MS = 10000;
 
 interface RemoteClipboardPayload {
 	encryptedContent: Uint8Array;
@@ -123,6 +124,10 @@ export default function App() {
 		string | null
 	>(null);
 	const [connectionPassword, setConnectionPassword] = useState("");
+	const [sessionPhase, setSessionPhase] = useState<
+		"checking" | "prompt" | "ready"
+	>("checking");
+	const sessionIdRef = useRef<string | null>(null);
 	const [clipboardSendNotice, setClipboardSendNotice] = useState<string | null>(
 		null,
 	);
@@ -211,6 +216,81 @@ export default function App() {
 
 		return () => {
 			cancelled = true;
+		};
+	}, []);
+
+	// Session check on mount.
+	useEffect(() => {
+		let cancelled = false;
+		const abort = new AbortController();
+		const timeout = setTimeout(() => {
+			if (cancelled) return;
+			abort.abort();
+			console.error("Session check timed out");
+			setSessionPhase("ready");
+		}, SESSION_CHECK_TIMEOUT_MS);
+
+		const checkSession = async () => {
+			try {
+				const statusRes = await fetch("/api/session", {
+					signal: abort.signal,
+				});
+				if (cancelled) return;
+				if (!statusRes.ok) {
+					console.error("Session status check failed:", statusRes.status);
+					setSessionPhase("ready");
+					return;
+				}
+				const statusBody: unknown = await statusRes.json();
+				const active =
+					statusBody !== null &&
+					typeof statusBody === "object" &&
+					"active" in statusBody &&
+					typeof (statusBody as { active: unknown }).active === "boolean"
+						? (statusBody as { active: boolean }).active
+						: false;
+
+				if (active) {
+					setSessionPhase("prompt");
+					return;
+				}
+
+				const claimRes = await fetch("/api/session", {
+					method: "POST",
+					signal: abort.signal,
+				});
+				if (cancelled) return;
+				if (claimRes.ok) {
+					const claimBody: unknown = await claimRes.json();
+					const sessionId =
+						claimBody !== null &&
+						typeof claimBody === "object" &&
+						"sessionId" in claimBody &&
+						typeof (claimBody as { sessionId: unknown }).sessionId === "string"
+							? (claimBody as { sessionId: string }).sessionId
+							: null;
+					sessionIdRef.current = sessionId;
+					setSessionPhase("ready");
+				} else if (claimRes.status === 409) {
+					setSessionPhase("prompt");
+				} else {
+					console.error("Session claim failed:", claimRes.status);
+					setSessionPhase("ready");
+				}
+			} catch (err) {
+				if (!cancelled && !abort.signal.aborted) {
+					console.error("Session check error:", err);
+					setSessionPhase("ready");
+				}
+			}
+		};
+
+		void checkSession();
+
+		return () => {
+			cancelled = true;
+			clearTimeout(timeout);
+			abort.abort();
 		};
 	}, []);
 
@@ -707,6 +787,29 @@ export default function App() {
 		setToolbarOpen(false);
 	}, []);
 
+	const handleTakeOverSession = useCallback(() => {
+		void (async () => {
+			try {
+				const res = await fetch("/api/session", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ force: true }),
+				});
+				if (res.ok) {
+					const { sessionId } = (await res.json()) as { sessionId: string };
+					sessionIdRef.current = sessionId;
+				} else {
+					console.error("Session takeover failed:", res.status);
+					sessionIdRef.current = null;
+				}
+			} catch (err) {
+				console.error("Session takeover error:", err);
+				sessionIdRef.current = null;
+			}
+			setSessionPhase("ready");
+		})();
+	}, []);
+
 	const handleDisconnect = useCallback(() => {
 		disconnect();
 		setConnectionPassword("");
@@ -715,7 +818,10 @@ export default function App() {
 
 	const handleConnect = useCallback(() => {
 		disconnect();
-		connect({ password: connectionPassword });
+		connect({
+			password: connectionPassword,
+			sessionId: sessionIdRef.current ?? undefined,
+		});
 	}, [disconnect, connect, connectionPassword]);
 
 	const handleConnectSubmit = useCallback(
@@ -804,9 +910,27 @@ export default function App() {
 			</div>
 
 			{/* Connection overlay */}
-			{state !== "connected" && (
+			{(sessionPhase !== "ready" || state !== "connected") && (
 				<div className="overlay">
-					{state === "connecting" && (
+					{sessionPhase === "checking" && (
+						<div className="status">
+							<p>Checking session...</p>
+						</div>
+					)}
+					{sessionPhase === "prompt" && (
+						<div className="status">
+							<p>There is an active session.</p>
+							<p>Continuing will disconnect it.</p>
+							<button
+								type="button"
+								className="btn"
+								onClick={handleTakeOverSession}
+							>
+								Continue
+							</button>
+						</div>
+					)}
+					{sessionPhase === "ready" && state === "connecting" && (
 						<div className="status">
 							<p>Connecting...</p>
 							<p>
@@ -816,7 +940,7 @@ export default function App() {
 							</p>
 						</div>
 					)}
-					{state !== "connecting" && (
+					{sessionPhase === "ready" && state !== "connecting" && (
 						<div className="status">
 							<p>
 								{state === "error" ? "Connection failed" : "Ready to connect"}

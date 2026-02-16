@@ -8,6 +8,7 @@ interface Config {
 
 interface ConnectOptions {
 	password?: string;
+	sessionId?: string;
 }
 
 export type ConnectionState =
@@ -1346,6 +1347,7 @@ export function useGuacamole(
 			params.set("HOSTNAME", config.vncHost);
 			params.set("PORT", config.vncPort);
 			if (options?.password) params.set("PASSWORD", options.password);
+			if (options?.sessionId) params.set("SESSION_ID", options.sessionId);
 			const vp = window.visualViewport;
 			params.set(
 				"WIDTH",

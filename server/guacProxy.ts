@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import net from "node:net";
 import { type WebSocket, WebSocketServer } from "ws";
+import { registerSessionWebSocket, validateSessionId } from "./session.js";
 
 interface GuacProxyOptions {
 	guacdHost: string;
@@ -223,24 +224,29 @@ export function attachGuacProxy(
 	const wss = new WebSocketServer({ noServer: true });
 
 	server.on("upgrade", (req, socket, head) => {
-		const pathname = req.url
-			? new URL(req.url, `http://${req.headers.host || "localhost"}`).pathname
-			: "";
+		const upgradeUrl = req.url
+			? new URL(req.url, `http://${req.headers.host || "localhost"}`)
+			: null;
+		const pathname = upgradeUrl?.pathname ?? "";
 		if (pathname !== "/guac/ws") {
 			socket.destroy();
 			return;
 		}
+		const sessionId = upgradeUrl?.searchParams.get("SESSION_ID") ?? "";
+		if (!validateSessionId(sessionId)) {
+			socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+			socket.destroy();
+			return;
+		}
 		wss.handleUpgrade(req, socket, head, (ws) => {
-			wss.emit("connection", ws, req);
+			// Pass the already-parsed URL to avoid re-parsing in the connection handler.
+			wss.emit("connection", ws, upgradeUrl);
 		});
 	});
 
-	wss.on("connection", (ws, req) => {
+	wss.on("connection", (ws: WebSocket, requestUrl: URL) => {
 		activeWebSockets.add(ws);
-		const requestUrl = new URL(
-			req.url || "/guac/ws",
-			`http://${req.headers.host || "localhost"}`,
-		);
+		registerSessionWebSocket(ws);
 		const query = requestUrl.searchParams;
 		const queryByNormalizedName = new Map<string, string>();
 		for (const [key, value] of query.entries()) {

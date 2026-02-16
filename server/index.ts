@@ -33,6 +33,8 @@ const GUACD_PORT = Number.parseInt(process.env.GUACD_PORT || "14822", 10);
 const VNC_HOST = process.env.VNC_HOST || "169.254.0.1";
 const VNC_PORT = process.env.VNC_PORT || "5901";
 
+const COOKIE_FLAGS = `HttpOnly; SameSite=Strict; Path=/${isProduction ? "; Secure" : ""}`;
+
 // --- Public auth routes ---
 
 app.post("/api/auth/login", (req, res) => {
@@ -44,16 +46,19 @@ app.post("/api/auth/login", (req, res) => {
 	const token = createAuthToken();
 	res.setHeader(
 		"Set-Cookie",
-		`${getAuthCookieName()}=${token}; HttpOnly; SameSite=Strict; Path=/`,
+		`${getAuthCookieName()}=${token}; ${COOKIE_FLAGS}`,
 	);
 	res.json({ ok: true });
 });
 
-app.post("/api/auth/logout", (_req, res) => {
-	revokeAuthToken();
+app.post("/api/auth/logout", (req, res) => {
+	const token = getAuthTokenFromCookieHeader(req.headers.cookie);
+	if (token && validateAuthToken(token)) {
+		revokeAuthToken();
+	}
 	res.setHeader(
 		"Set-Cookie",
-		`${getAuthCookieName()}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`,
+		`${getAuthCookieName()}=; ${COOKIE_FLAGS}; Max-Age=0`,
 	);
 	res.json({ ok: true });
 });

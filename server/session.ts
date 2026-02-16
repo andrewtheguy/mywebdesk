@@ -29,9 +29,18 @@ export function registerSessionWebSocket(ws: WebSocket): void {
 	});
 }
 
+const EVICT_FORCE_CLOSE_MS = 2000;
+
 export function evictSession(): void {
 	for (const ws of sessionWebSockets) {
-		ws.terminate();
+		ws.close(4001, "Session taken over");
+		const timer = setTimeout(() => {
+			if (ws.readyState !== ws.CLOSED) {
+				ws.terminate();
+			}
+		}, EVICT_FORCE_CLOSE_MS);
+		timer.unref();
+		ws.once("close", () => clearTimeout(timer));
 	}
 	sessionWebSockets.clear();
 	activeSessionId = null;

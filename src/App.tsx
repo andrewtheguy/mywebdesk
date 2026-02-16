@@ -13,6 +13,7 @@ const V_KEYSYM = 0x0076;
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
 const CLIPBOARD_NOTICE_DURATION_MS = 1800;
+const SESSION_CHECK_TIMEOUT_MS = 10000;
 
 interface RemoteClipboardPayload {
 	encryptedContent: Uint8Array;
@@ -221,30 +222,66 @@ export default function App() {
 	// Session check on mount.
 	useEffect(() => {
 		let cancelled = false;
+		const abort = new AbortController();
+		const timeout = setTimeout(() => {
+			if (cancelled) return;
+			abort.abort();
+			console.error("Session check timed out");
+			setSessionPhase("ready");
+		}, SESSION_CHECK_TIMEOUT_MS);
 
 		const checkSession = async () => {
 			try {
-				const statusRes = await fetch("/api/session");
+				const statusRes = await fetch("/api/session", {
+					signal: abort.signal,
+				});
 				if (cancelled) return;
-				const { active } = (await statusRes.json()) as { active: boolean };
-
-				if (!active) {
-					const claimRes = await fetch("/api/session", { method: "POST" });
-					if (cancelled) return;
-					if (claimRes.ok) {
-						const { sessionId } = (await claimRes.json()) as {
-							sessionId: string;
-						};
-						sessionIdRef.current = sessionId;
-						setSessionPhase("ready");
-					} else {
-						setSessionPhase("prompt");
-					}
-				} else {
-					setSessionPhase("prompt");
+				if (!statusRes.ok) {
+					console.error("Session status check failed:", statusRes.status);
+					setSessionPhase("ready");
+					return;
 				}
-			} catch {
-				if (!cancelled) setSessionPhase("ready");
+				const statusBody: unknown = await statusRes.json();
+				const active =
+					statusBody !== null &&
+					typeof statusBody === "object" &&
+					"active" in statusBody &&
+					typeof (statusBody as { active: unknown }).active === "boolean"
+						? (statusBody as { active: boolean }).active
+						: false;
+
+				if (active) {
+					setSessionPhase("prompt");
+					return;
+				}
+
+				const claimRes = await fetch("/api/session", {
+					method: "POST",
+					signal: abort.signal,
+				});
+				if (cancelled) return;
+				if (claimRes.ok) {
+					const claimBody: unknown = await claimRes.json();
+					const sessionId =
+						claimBody !== null &&
+						typeof claimBody === "object" &&
+						"sessionId" in claimBody &&
+						typeof (claimBody as { sessionId: unknown }).sessionId === "string"
+							? (claimBody as { sessionId: string }).sessionId
+							: null;
+					sessionIdRef.current = sessionId;
+					setSessionPhase("ready");
+				} else if (claimRes.status === 409) {
+					setSessionPhase("prompt");
+				} else {
+					console.error("Session claim failed:", claimRes.status);
+					setSessionPhase("ready");
+				}
+			} catch (err) {
+				if (!cancelled && !abort.signal.aborted) {
+					console.error("Session check error:", err);
+					setSessionPhase("ready");
+				}
 			}
 		};
 
@@ -252,6 +289,8 @@ export default function App() {
 
 		return () => {
 			cancelled = true;
+			clearTimeout(timeout);
+			abort.abort();
 		};
 	}, []);
 

@@ -239,17 +239,14 @@ export function attachGuacProxy(
 			return;
 		}
 		wss.handleUpgrade(req, socket, head, (ws) => {
-			wss.emit("connection", ws, req);
+			// Pass the already-parsed URL to avoid re-parsing in the connection handler.
+			wss.emit("connection", ws, upgradeUrl);
 		});
 	});
 
-	wss.on("connection", (ws, req) => {
+	wss.on("connection", (ws: WebSocket, requestUrl: URL) => {
 		activeWebSockets.add(ws);
 		registerSessionWebSocket(ws);
-		const requestUrl = new URL(
-			req.url || "/guac/ws",
-			`http://${req.headers.host || "localhost"}`,
-		);
 		const query = requestUrl.searchParams;
 		const queryByNormalizedName = new Map<string, string>();
 		for (const [key, value] of query.entries()) {

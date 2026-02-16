@@ -109,6 +109,17 @@ export function useGuacamole(
 			let config: Config;
 			try {
 				const res = await fetch("/api/config");
+				if (!res.ok) {
+					const responseBody = (await res.text()).trim();
+					if (connectionId !== connectionIdRef.current) return;
+					setError(
+						responseBody
+							? `Failed to fetch config (${res.status}): ${responseBody}`
+							: `Failed to fetch config (${res.status})`,
+					);
+					setState("error");
+					return;
+				}
 				config = await res.json();
 			} catch {
 				if (connectionId !== connectionIdRef.current) return;

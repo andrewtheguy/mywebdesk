@@ -17,9 +17,9 @@ export type ConnectionState =
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
-const PAN_ACTIVATION_THRESHOLD_PX = 3;
-const TAP_THRESHOLD_PX = 10;
-const DRAG_LONG_PRESS_MS = 180;
+const PAN_ACTIVATION_THRESHOLD_PX = 12;
+const TAP_THRESHOLD_PX = 12;
+const DRAG_LONG_PRESS_MS = 140;
 
 interface PanOffset {
 	x: number;
@@ -39,8 +39,6 @@ interface MouseGesture {
 	startClientY: number;
 	lastClientX: number;
 	lastClientY: number;
-	originPanX: number;
-	originPanY: number;
 	mode: "pending" | "pan" | "drag";
 	longPressTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -165,6 +163,8 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		let pinchGesture: PinchGesture | null = null;
 		let mouseGesture: MouseGesture | null = null;
 		let ignoreSingleTouchUntilRelease = false;
+		let cursorPosition = { x: 0, y: 0 };
+		let hasCursorPosition = false;
 
 		function clampValue(value: number, min: number, max: number): number {
 			return Math.min(max, Math.max(min, value));
@@ -242,6 +242,58 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			return null;
 		}
 
+		function clampCursorToDisplay(
+			x: number,
+			y: number,
+		): { x: number; y: number } {
+			const width = display.getWidth();
+			const height = display.getHeight();
+			const maxX = Math.max(0, width - 1);
+			const maxY = Math.max(0, height - 1);
+			return {
+				x: clampValue(Math.round(x), 0, maxX),
+				y: clampValue(Math.round(y), 0, maxY),
+			};
+		}
+
+		function getVisibleRemoteBounds(
+			effectiveScale: number,
+		): { left: number; right: number; top: number; bottom: number } {
+			const displayWidth = display.getWidth();
+			const displayHeight = display.getHeight();
+			const { width: containerWidth, height: containerHeight } = getContainerSize();
+			const maxX = Math.max(0, displayWidth - 1);
+			const maxY = Math.max(0, displayHeight - 1);
+
+			const left = clampValue(-panOffset.x / effectiveScale, 0, maxX);
+			const top = clampValue(-panOffset.y / effectiveScale, 0, maxY);
+			const right = clampValue(left + containerWidth / effectiveScale - 1, left, maxX);
+			const bottom = clampValue(top + containerHeight / effectiveScale - 1, top, maxY);
+
+			return { left, right, top, bottom };
+		}
+
+		function sendMouseFromRemote(
+			remoteX: number,
+			remoteY: number,
+			leftDown: boolean,
+		): void {
+			const clamped = clampCursorToDisplay(remoteX, remoteY);
+			cursorPosition = { x: clamped.x, y: clamped.y };
+			hasCursorPosition = true;
+			client.sendMouseState(
+				new Guacamole.Mouse.State(
+					clamped.x,
+					clamped.y,
+					leftDown,
+					false,
+					false,
+					false,
+					false,
+				),
+			);
+		}
+
 		function sendMouseFromClient(
 			clientX: number,
 			clientY: number,
@@ -252,14 +304,54 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			const scale = display.getWidth() / rect.width;
 			const x = Math.round((clientX - rect.left) * scale);
 			const y = Math.round((clientY - rect.top) * scale);
+			sendMouseFromRemote(x, y, leftDown);
+		}
+
+		function getCurrentCursorPosition(): { x: number; y: number } {
+			if (hasCursorPosition) return cursorPosition;
+			const fallback = clampCursorToDisplay(
+				display.getWidth() / 2,
+				display.getHeight() / 2,
+			);
+			cursorPosition = fallback;
+			hasCursorPosition = true;
+			return fallback;
+		}
+
+		function sendTapClick(): void {
+			const cursor = getCurrentCursorPosition();
 			client.sendMouseState(
-				new Guacamole.Mouse.State(x, y, leftDown, false, false, false, false),
+				new Guacamole.Mouse.State(
+					cursor.x,
+					cursor.y,
+					true,
+					false,
+					false,
+					false,
+					false,
+				),
+			);
+			client.sendMouseState(
+				new Guacamole.Mouse.State(
+					cursor.x,
+					cursor.y,
+					false,
+					false,
+					false,
+					false,
+					false,
+				),
 			);
 		}
 
-		function sendTapClick(clientX: number, clientY: number): void {
-			sendMouseFromClient(clientX, clientY, true);
-			sendMouseFromClient(clientX, clientY, false);
+		function sendDragMoveFromStep(stepX: number, stepY: number): void {
+			const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
+			const baseCursor = getCurrentCursorPosition();
+			const nextCursor = clampCursorToDisplay(
+				baseCursor.x + stepX / effectiveScale,
+				baseCursor.y + stepY / effectiveScale,
+			);
+			sendMouseFromRemote(nextCursor.x, nextCursor.y, true);
 		}
 
 		function clearMouseGestureTimer(gesture: MouseGesture | null): void {
@@ -275,8 +367,6 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				startClientY: touch.clientY,
 				lastClientX: touch.clientX,
 				lastClientY: touch.clientY,
-				originPanX: panOffset.x,
-				originPanY: panOffset.y,
 				mode: "pending",
 				longPressTimer: null,
 			};
@@ -290,11 +380,8 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				);
 				if (moved >= PAN_ACTIVATION_THRESHOLD_PX) return;
 				mouseGesture.mode = "drag";
-				sendMouseFromClient(
-					mouseGesture.lastClientX,
-					mouseGesture.lastClientY,
-					true,
-				);
+				const cursor = getCurrentCursorPosition();
+				sendMouseFromRemote(cursor.x, cursor.y, true);
 			}, DRAG_LONG_PRESS_MS);
 
 			mouseGesture = gesture;
@@ -309,14 +396,15 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			clearMouseGestureTimer(gesture);
 
 			if (gesture.mode === "drag") {
-				sendMouseFromClient(endX, endY, false);
+				const cursor = getCurrentCursorPosition();
+				sendMouseFromRemote(cursor.x, cursor.y, false);
 			} else if (!suppressTap && gesture.mode === "pending") {
 				const moved = Math.hypot(
 					endX - gesture.startClientX,
 					endY - gesture.startClientY,
 				);
 				if (moved <= TAP_THRESHOLD_PX) {
-					sendTapClick(endX, endY);
+					sendTapClick();
 				}
 			}
 
@@ -327,30 +415,56 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			if (!mouseGesture) return;
 
 			const gesture = mouseGesture;
+			const stepX = touch.clientX - gesture.lastClientX;
+			const stepY = touch.clientY - gesture.lastClientY;
 			gesture.lastClientX = touch.clientX;
 			gesture.lastClientY = touch.clientY;
 
-			const dx = touch.clientX - gesture.startClientX;
-			const dy = touch.clientY - gesture.startClientY;
+			const totalDx = touch.clientX - gesture.startClientX;
+			const totalDy = touch.clientY - gesture.startClientY;
 
 			if (
 				gesture.mode === "pending" &&
-				Math.hypot(dx, dy) >= PAN_ACTIVATION_THRESHOLD_PX
+				Math.hypot(totalDx, totalDy) >= PAN_ACTIVATION_THRESHOLD_PX
 			) {
 				clearMouseGestureTimer(gesture);
 				gesture.mode = "pan";
 			}
 
 			if (gesture.mode === "pan") {
-				applyDisplayTransform(zoomScale, {
-					x: gesture.originPanX + dx,
-					y: gesture.originPanY + dy,
-				});
+				const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
+				const baseCursorX = hasCursorPosition
+					? cursorPosition.x
+					: display.getWidth() / 2;
+				const baseCursorY = hasCursorPosition
+					? cursorPosition.y
+					: display.getHeight() / 2;
+				const desiredCursor = clampCursorToDisplay(
+					baseCursorX + stepX / effectiveScale,
+					baseCursorY + stepY / effectiveScale,
+				);
+
+				const visible = getVisibleRemoteBounds(effectiveScale);
+				const constrainedCursor = {
+					x: clampValue(desiredCursor.x, visible.left, visible.right),
+					y: clampValue(desiredCursor.y, visible.top, visible.bottom),
+				};
+
+				sendMouseFromRemote(constrainedCursor.x, constrainedCursor.y, false);
+
+				const overflowX = desiredCursor.x - constrainedCursor.x;
+				const overflowY = desiredCursor.y - constrainedCursor.y;
+				if (overflowX !== 0 || overflowY !== 0) {
+					applyDisplayTransform(zoomScale, {
+						x: panOffset.x - overflowX * effectiveScale,
+						y: panOffset.y - overflowY * effectiveScale,
+					});
+				}
 				return;
 			}
 
 			if (gesture.mode === "drag") {
-				sendMouseFromClient(touch.clientX, touch.clientY, true);
+				sendDragMoveFromStep(stepX, stepY);
 			}
 		}
 

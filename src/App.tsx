@@ -9,7 +9,35 @@ const TOOLBAR_WIDTH = 260;
 const TOOLBAR_GAP = 12;
 const TOOLBAR_MIN_HEIGHT = 140;
 const CTRL_KEYSYM = 0xffe3;
+const ALT_KEYSYM = 0xffe9;
+const SHIFT_KEYSYM = 0xffe1;
+const SUPER_KEYSYM = 0xffeb;
+const TAB_KEYSYM = 0xff09;
+const ESC_KEYSYM = 0xff1b;
+const DEL_KEYSYM = 0xffff;
+const F4_KEYSYM = 0xffc1;
+const F5_KEYSYM = 0xffc2;
+const F11_KEYSYM = 0xffc8;
+const W_KEYSYM = 0x0077;
+const T_KEYSYM = 0x0074;
+const N_KEYSYM = 0x006e;
 const V_KEYSYM = 0x0076;
+const L_KEYSYM = 0x006c;
+
+const KEY_COMBOS: { label: string; keysyms: number[] }[] = [
+	{ label: "Ctrl+W", keysyms: [CTRL_KEYSYM, W_KEYSYM] },
+	{ label: "Ctrl+T", keysyms: [CTRL_KEYSYM, T_KEYSYM] },
+	{ label: "Ctrl+N", keysyms: [CTRL_KEYSYM, N_KEYSYM] },
+	{ label: "Ctrl+L", keysyms: [CTRL_KEYSYM, L_KEYSYM] },
+	{ label: "Ctrl+Shift+T", keysyms: [CTRL_KEYSYM, SHIFT_KEYSYM, T_KEYSYM] },
+	{ label: "Alt+Tab", keysyms: [ALT_KEYSYM, TAB_KEYSYM] },
+	{ label: "Alt+F4", keysyms: [ALT_KEYSYM, F4_KEYSYM] },
+	{ label: "Ctrl+Alt+Del", keysyms: [CTRL_KEYSYM, ALT_KEYSYM, DEL_KEYSYM] },
+	{ label: "F5", keysyms: [F5_KEYSYM] },
+	{ label: "F11", keysyms: [F11_KEYSYM] },
+	{ label: "Ctrl+Esc", keysyms: [CTRL_KEYSYM, ESC_KEYSYM] },
+	{ label: "Super", keysyms: [SUPER_KEYSYM] },
+];
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
 const CLIPBOARD_NOTICE_DURATION_MS = 1800;
@@ -97,7 +125,7 @@ export default function App() {
 		disconnect,
 		sendClipboard,
 		sendKey,
-		sendCtrlAltDel,
+		sendKeyCombo,
 		state,
 		error,
 		clipboardText,
@@ -107,10 +135,6 @@ export default function App() {
 	const [clipboardInput, setClipboardInput] = useState("");
 	const [remoteClipboardPayload, setRemoteClipboardPayload] =
 		useState<RemoteClipboardPayload | null>(null);
-	const [revealedRemoteClipboardText, setRevealedRemoteClipboardText] =
-		useState<string | null>(null);
-	const [isRemoteClipboardRevealed, setIsRemoteClipboardRevealed] =
-		useState(false);
 	const [isManualClipboardInputActive, setIsManualClipboardInputActive] =
 		useState(false);
 	const [clipboardSecurityError, setClipboardSecurityError] = useState<
@@ -360,9 +384,6 @@ export default function App() {
 					receivedAtMs: Date.now(),
 					contentLengthBytes: textBytes.byteLength,
 				});
-				setRevealedRemoteClipboardText(null);
-				setIsRemoteClipboardRevealed(false);
-				setIsManualClipboardInputActive(false);
 				setClipboardSecurityError(null);
 			} catch {
 				if (cancelled) return;
@@ -396,8 +417,6 @@ export default function App() {
 			hiddenInputRef.current?.focus();
 		} else {
 			setIsDisplayFocused(false);
-			setIsRemoteClipboardRevealed(false);
-			setRevealedRemoteClipboardText(null);
 			setIsManualClipboardInputActive(false);
 		}
 		if (state === "idle" || state === "disconnected") {
@@ -444,21 +463,12 @@ export default function App() {
 
 	useEffect(() => {
 		if (toolbarOpen) return;
-		setIsRemoteClipboardRevealed(false);
-		setRevealedRemoteClipboardText(null);
-		if (remoteClipboardPayload) {
-			setIsManualClipboardInputActive(false);
-		}
-	}, [remoteClipboardPayload, toolbarOpen]);
+		setClipboardInput("");
+		setIsManualClipboardInputActive(false);
+	}, [toolbarOpen]);
 
 	const isRemoteMetadataMode =
-		!!remoteClipboardPayload &&
-		!isManualClipboardInputActive &&
-		!isRemoteClipboardRevealed;
-	const isRemoteRevealedMode =
-		!!remoteClipboardPayload &&
-		!isManualClipboardInputActive &&
-		isRemoteClipboardRevealed;
+		!!remoteClipboardPayload && !isManualClipboardInputActive;
 	const clipboardMetadataLines = useMemo(() => {
 		if (!remoteClipboardPayload) return [] as string[];
 		const receivedAt = new Date(
@@ -475,17 +485,8 @@ export default function App() {
 	}, [clipboardMetadataLines]);
 	const displayedClipboardText = useMemo(() => {
 		if (isRemoteMetadataMode) return clipboardMetadataText;
-		if (isRemoteRevealedMode) {
-			return revealedRemoteClipboardText ?? "";
-		}
 		return clipboardInput;
-	}, [
-		clipboardInput,
-		clipboardMetadataText,
-		isRemoteMetadataMode,
-		isRemoteRevealedMode,
-		revealedRemoteClipboardText,
-	]);
+	}, [clipboardInput, clipboardMetadataText, isRemoteMetadataMode]);
 
 	// Track viewport size/offset from visualViewport (fallback to window).
 	useEffect(() => {
@@ -654,8 +655,6 @@ export default function App() {
 				if (text !== null) {
 					setClipboardInput(text);
 					setIsManualClipboardInputActive(true);
-					setIsRemoteClipboardRevealed(false);
-					setRevealedRemoteClipboardText(null);
 					sendClipboard(text);
 				}
 				sendKey(CTRL_KEYSYM, true);
@@ -671,30 +670,20 @@ export default function App() {
 		string | null
 	> => {
 		if (!remoteClipboardPayload) return null;
-		if (isRemoteRevealedMode && revealedRemoteClipboardText !== null) {
-			return revealedRemoteClipboardText;
-		}
 		try {
 			return await decryptRemoteClipboardPayload(remoteClipboardPayload);
 		} catch {
 			setClipboardSecurityError("Clipboard decryption failed");
 			return null;
 		}
-	}, [
-		decryptRemoteClipboardPayload,
-		isRemoteRevealedMode,
-		remoteClipboardPayload,
-		revealedRemoteClipboardText,
-	]);
+	}, [decryptRemoteClipboardPayload, remoteClipboardPayload]);
 
 	const handleRevealRemoteClipboard = useCallback(() => {
 		void (async () => {
 			const plaintext = await decryptCurrentRemoteClipboard();
 			if (plaintext === null) return;
-			setRevealedRemoteClipboardText(plaintext);
 			setClipboardInput(plaintext);
-			setIsRemoteClipboardRevealed(true);
-			setIsManualClipboardInputActive(false);
+			setIsManualClipboardInputActive(true);
 			setClipboardSecurityError(null);
 		})();
 	}, [decryptCurrentRemoteClipboard]);
@@ -703,40 +692,19 @@ export default function App() {
 		(e: React.ChangeEvent<HTMLTextAreaElement>) => {
 			setClipboardInput(e.currentTarget.value);
 			setIsManualClipboardInputActive(true);
-			setIsRemoteClipboardRevealed(false);
-			setRevealedRemoteClipboardText(null);
 		},
 		[],
 	);
 
 	const handlePasteClipboard = useCallback(() => {
-		void (async () => {
-			let sent = false;
-			if (isRemoteMetadataMode || isRemoteRevealedMode) {
-				const remoteText = await decryptCurrentRemoteClipboard();
-				if (remoteText === null) {
-					showClipboardNotice("Clipboard send failed");
-					return;
-				}
-				sent = sendClipboard(remoteText);
-			} else {
-				sent = sendClipboard(clipboardInput);
-			}
-			if (!sent) {
-				showClipboardNotice("Clipboard send failed");
-				return;
-			}
-			setToolbarOpen(false);
-			showClipboardNotice("Clipboard sent to remote");
-		})();
-	}, [
-		clipboardInput,
-		decryptCurrentRemoteClipboard,
-		isRemoteMetadataMode,
-		isRemoteRevealedMode,
-		sendClipboard,
-		showClipboardNotice,
-	]);
+		const sent = sendClipboard(clipboardInput);
+		if (!sent) {
+			showClipboardNotice("Clipboard send failed");
+			return;
+		}
+		setToolbarOpen(false);
+		showClipboardNotice("Clipboard sent to remote");
+	}, [clipboardInput, sendClipboard, showClipboardNotice]);
 
 	const selectClipboardText = useCallback((target: HTMLTextAreaElement) => {
 		target.focus();
@@ -761,9 +729,15 @@ export default function App() {
 	);
 
 	const handleCopyClipboard = useCallback(async () => {
+		let text = clipboardInput;
+		if (isRemoteMetadataMode) {
+			const plaintext = await decryptCurrentRemoteClipboard();
+			if (plaintext === null) return;
+			text = plaintext;
+		}
 		if (navigator.clipboard?.writeText) {
 			try {
-				await navigator.clipboard.writeText(displayedClipboardText);
+				await navigator.clipboard.writeText(text);
 				return;
 			} catch {
 				// Fallback below for environments where Clipboard API is unavailable.
@@ -780,7 +754,12 @@ export default function App() {
 		if (previousStart !== null && previousEnd !== null) {
 			input.setSelectionRange(previousStart, previousEnd);
 		}
-	}, [displayedClipboardText, selectClipboardText]);
+	}, [
+		clipboardInput,
+		decryptCurrentRemoteClipboard,
+		isRemoteMetadataMode,
+		selectClipboardText,
+	]);
 
 	const handleShowKeyboard = useCallback(() => {
 		hiddenInputRef.current?.focus();
@@ -977,8 +956,9 @@ export default function App() {
 
 			{/* FAB */}
 			{state === "connected" && (
+				// biome-ignore lint/a11y/useKeyWithClickEvents: click-only to avoid key interference
+				// biome-ignore lint/a11y/noStaticElementInteractions: click-only FAB with drag
 				<div
-					role="button"
 					className={`fab ${toolbarOpen ? "fab-active" : ""} ${fabDragging ? "fab-dragging" : ""}`}
 					style={{
 						left: `${resolvedFabPosition.x}px`,
@@ -991,7 +971,6 @@ export default function App() {
 					onPointerMove={handleFabPointerMove}
 					onPointerUp={handleFabPointerUp}
 					onPointerCancel={handleFabPointerCancel}
-					aria-label="Toggle toolbar"
 				>
 					{toolbarOpen ? "\u2715" : "\u2630"}
 				</div>
@@ -1049,8 +1028,9 @@ export default function App() {
 								type="button"
 								className="btn btn-sm"
 								onClick={handlePasteClipboard}
+								disabled={isRemoteMetadataMode}
 							>
-								Send to remote
+								Send
 							</button>
 							<button
 								type="button"
@@ -1060,6 +1040,19 @@ export default function App() {
 								Copy
 							</button>
 						</div>
+					</div>
+
+					<div className="toolbar-section toolbar-keys">
+						{KEY_COMBOS.map(({ label, keysyms }) => (
+							<button
+								key={label}
+								type="button"
+								className="btn btn-xs"
+								onClick={() => sendKeyCombo(keysyms)}
+							>
+								{label}
+							</button>
+						))}
 					</div>
 
 					<div className="toolbar-section toolbar-buttons">
@@ -1072,13 +1065,6 @@ export default function App() {
 								Show Keyboard
 							</button>
 						)}
-						<button
-							type="button"
-							className="btn btn-sm"
-							onClick={sendCtrlAltDel}
-						>
-							Ctrl+Alt+Del
-						</button>
 						<button
 							type="button"
 							className="btn btn-sm btn-danger"

@@ -96,13 +96,24 @@
 	touch-action: manipulation;
 }
 
-.btn:active {
+.btn:active:not(:disabled) {
 	background: #3580d4;
+}
+
+.btn:disabled {
+	opacity: 0.4;
+	cursor: default;
 }
 
 .btn-sm {
 	padding: 8px 14px;
 	font-size: 0.875rem;
+}
+
+.btn-xs {
+	padding: 4px 8px;
+	font-size: 0.75rem;
+	border-radius: 4px;
 }
 
 .btn-danger {
@@ -253,6 +264,12 @@
 
 .clipboard-actions .btn {
 	flex: 1;
+}
+
+.toolbar-keys {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
 }
 
 .toolbar-buttons {

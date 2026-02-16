@@ -1078,7 +1078,7 @@ export default function App() {
 								className="btn btn-sm"
 								onClick={handlePasteClipboard}
 							>
-								Send to remote
+								Send
 							</button>
 							<button
 								type="button"

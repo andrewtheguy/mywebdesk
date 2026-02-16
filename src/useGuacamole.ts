@@ -625,9 +625,13 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			return true;
 		}
 
-		function sendDragMoveFromStep(stepX: number, stepY: number): void {
+		function moveCursorWithPan(
+			stepX: number,
+			stepY: number,
+			leftDown: boolean,
+			baseCursor: { x: number; y: number },
+		): void {
 			const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
-			const baseCursor = getCurrentCursorPosition();
 			const desiredCursor = clampCursorToDisplay(
 				baseCursor.x + stepX / effectiveScale,
 				baseCursor.y + stepY / effectiveScale,
@@ -638,7 +642,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				x: clampValue(desiredCursor.x, visible.left, visible.right),
 				y: clampValue(desiredCursor.y, visible.top, visible.bottom),
 			};
-			sendMouseFromRemote(constrainedCursor.x, constrainedCursor.y, true);
+			sendMouseFromRemote(constrainedCursor.x, constrainedCursor.y, leftDown);
 
 			const overflowX = desiredCursor.x - constrainedCursor.x;
 			const overflowY = desiredCursor.y - constrainedCursor.y;
@@ -648,6 +652,10 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 					y: panOffset.y - overflowY * effectiveScale,
 				});
 			}
+		}
+
+		function sendDragMoveFromStep(stepX: number, stepY: number): void {
+			moveCursorWithPan(stepX, stepY, true, getCurrentCursorPosition());
 		}
 
 		function getDragAssistTouch(touches: TouchList): Touch | null {
@@ -778,34 +786,13 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			}
 
 			if (gesture.mode === "pan") {
-				const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
-				const baseCursorX = hasCursorPosition
-					? cursorPosition.x
-					: display.getWidth() / 2;
-				const baseCursorY = hasCursorPosition
-					? cursorPosition.y
-					: display.getHeight() / 2;
-				const desiredCursor = clampCursorToDisplay(
-					baseCursorX + stepX / effectiveScale,
-					baseCursorY + stepY / effectiveScale,
-				);
-
-				const visible = getVisibleRemoteBounds(effectiveScale);
-				const constrainedCursor = {
-					x: clampValue(desiredCursor.x, visible.left, visible.right),
-					y: clampValue(desiredCursor.y, visible.top, visible.bottom),
-				};
-
-				sendMouseFromRemote(constrainedCursor.x, constrainedCursor.y, false);
-
-				const overflowX = desiredCursor.x - constrainedCursor.x;
-				const overflowY = desiredCursor.y - constrainedCursor.y;
-				if (overflowX !== 0 || overflowY !== 0) {
-					applyDisplayTransform(zoomScale, {
-						x: panOffset.x - overflowX * effectiveScale,
-						y: panOffset.y - overflowY * effectiveScale,
-					});
-				}
+				const baseCursor = hasCursorPosition
+					? cursorPosition
+					: {
+							x: display.getWidth() / 2,
+							y: display.getHeight() / 2,
+						};
+				moveCursorWithPan(stepX, stepY, false, baseCursor);
 				return;
 			}
 

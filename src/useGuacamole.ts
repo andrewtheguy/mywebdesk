@@ -22,6 +22,9 @@ const TAP_THRESHOLD_PX = 12;
 const DRAG_LONG_PRESS_MS = 140;
 const TWO_FINGER_TAP_MAX_MOVE_PX = 12;
 const TWO_FINGER_TAP_MAX_DURATION_MS = 260;
+const THREE_FINGER_SCROLL_AXIS_LOCK_PX = 10;
+const THREE_FINGER_SCROLL_STEP_PX = 32;
+const HORIZONTAL_SCROLL_MODIFIER_KEYSYM = 0xffe1;
 
 interface PanOffset {
 	x: number;
@@ -60,6 +63,17 @@ interface TwoFingerTapGesture {
 	secondStartX: number;
 	secondStartY: number;
 	valid: boolean;
+}
+
+interface ThreeFingerScrollGesture {
+	touchIds: [number, number, number];
+	startMidX: number;
+	startMidY: number;
+	lastMidX: number;
+	lastMidY: number;
+	axis: "x" | "y" | null;
+	carryX: number;
+	carryY: number;
 }
 
 export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null>) {
@@ -183,6 +197,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		let mouseGesture: MouseGesture | null = null;
 		let dragAssistGesture: DragAssistGesture | null = null;
 		let twoFingerTapGesture: TwoFingerTapGesture | null = null;
+		let threeFingerScrollGesture: ThreeFingerScrollGesture | null = null;
 		let ignoreSingleTouchUntilRelease = false;
 		let cursorPosition = { x: 0, y: 0 };
 		let hasCursorPosition = false;
@@ -261,6 +276,46 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				if (touches[i].identifier === touchId) return touches[i];
 			}
 			return null;
+		}
+
+		function getThreeTouchMidpoint(
+			first: Touch,
+			second: Touch,
+			third: Touch,
+		): { x: number; y: number } {
+			return {
+				x: (first.clientX + second.clientX + third.clientX) / 3,
+				y: (first.clientY + second.clientY + third.clientY) / 3,
+			};
+		}
+
+		function getThreeFingerTouchSet(
+			touches: TouchList,
+			touchIds: [number, number, number],
+		): [Touch, Touch, Touch] | null {
+			const first = getTouchById(touches, touchIds[0]);
+			const second = getTouchById(touches, touchIds[1]);
+			const third = getTouchById(touches, touchIds[2]);
+			if (!first || !second || !third) return null;
+			return [first, second, third];
+		}
+
+		function beginThreeFingerScrollGesture(touches: TouchList): void {
+			if (touches.length < 3) return;
+			const first = touches[0];
+			const second = touches[1];
+			const third = touches[2];
+			const midpoint = getThreeTouchMidpoint(first, second, third);
+			threeFingerScrollGesture = {
+				touchIds: [first.identifier, second.identifier, third.identifier],
+				startMidX: midpoint.x,
+				startMidY: midpoint.y,
+				lastMidX: midpoint.x,
+				lastMidY: midpoint.y,
+				axis: null,
+				carryX: 0,
+				carryY: 0,
+			};
 		}
 
 		function beginTwoFingerTapGesture(first: Touch, second: Touch): void {
@@ -437,6 +492,115 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			);
 		}
 
+		function sendWheelFromRemote(
+			remoteX: number,
+			remoteY: number,
+			up: boolean,
+			down: boolean,
+		): void {
+			const clamped = clampCursorToDisplay(remoteX, remoteY);
+			cursorPosition = { x: clamped.x, y: clamped.y };
+			hasCursorPosition = true;
+			client.sendMouseState(
+				new Guacamole.Mouse.State(
+					clamped.x,
+					clamped.y,
+					false,
+					false,
+					false,
+					up,
+					down,
+				),
+			);
+			client.sendMouseState(
+				new Guacamole.Mouse.State(
+					clamped.x,
+					clamped.y,
+					false,
+					false,
+					false,
+					false,
+					false,
+				),
+			);
+		}
+
+		function sendVerticalScrollTick(direction: "up" | "down"): void {
+			const cursor = getCurrentCursorPosition();
+			sendWheelFromRemote(
+				cursor.x,
+				cursor.y,
+				direction === "up",
+				direction === "down",
+			);
+		}
+
+		function sendHorizontalScrollTick(direction: "left" | "right"): void {
+			// Guacamole exposes vertical wheel buttons only; emulate horizontal via Shift+Wheel.
+			client.sendKeyEvent(true, HORIZONTAL_SCROLL_MODIFIER_KEYSYM);
+			sendVerticalScrollTick(direction === "left" ? "up" : "down");
+			client.sendKeyEvent(false, HORIZONTAL_SCROLL_MODIFIER_KEYSYM);
+		}
+
+		function handleThreeFingerScrollMove(touches: TouchList): boolean {
+			if (!threeFingerScrollGesture || touches.length < 3) return false;
+
+			const touchSet = getThreeFingerTouchSet(
+				touches,
+				threeFingerScrollGesture.touchIds,
+			);
+			if (!touchSet) {
+				threeFingerScrollGesture = null;
+				return false;
+			}
+
+			const [first, second, third] = touchSet;
+			const midpoint = getThreeTouchMidpoint(first, second, third);
+			const stepX = midpoint.x - threeFingerScrollGesture.lastMidX;
+			const stepY = midpoint.y - threeFingerScrollGesture.lastMidY;
+			threeFingerScrollGesture.lastMidX = midpoint.x;
+			threeFingerScrollGesture.lastMidY = midpoint.y;
+
+			if (!threeFingerScrollGesture.axis) {
+				const totalX = midpoint.x - threeFingerScrollGesture.startMidX;
+				const totalY = midpoint.y - threeFingerScrollGesture.startMidY;
+				if (
+					Math.abs(totalX) < THREE_FINGER_SCROLL_AXIS_LOCK_PX &&
+					Math.abs(totalY) < THREE_FINGER_SCROLL_AXIS_LOCK_PX
+				) {
+					return true;
+				}
+				threeFingerScrollGesture.axis =
+					Math.abs(totalX) >= Math.abs(totalY) ? "x" : "y";
+			}
+
+			if (threeFingerScrollGesture.axis === "x") {
+				threeFingerScrollGesture.carryX += stepX;
+				while (Math.abs(threeFingerScrollGesture.carryX) >= THREE_FINGER_SCROLL_STEP_PX) {
+					if (threeFingerScrollGesture.carryX > 0) {
+						sendHorizontalScrollTick("right");
+						threeFingerScrollGesture.carryX -= THREE_FINGER_SCROLL_STEP_PX;
+					} else {
+						sendHorizontalScrollTick("left");
+						threeFingerScrollGesture.carryX += THREE_FINGER_SCROLL_STEP_PX;
+					}
+				}
+				return true;
+			}
+
+			threeFingerScrollGesture.carryY += stepY;
+			while (Math.abs(threeFingerScrollGesture.carryY) >= THREE_FINGER_SCROLL_STEP_PX) {
+				if (threeFingerScrollGesture.carryY > 0) {
+					sendVerticalScrollTick("down");
+					threeFingerScrollGesture.carryY -= THREE_FINGER_SCROLL_STEP_PX;
+				} else {
+					sendVerticalScrollTick("up");
+					threeFingerScrollGesture.carryY += THREE_FINGER_SCROLL_STEP_PX;
+				}
+			}
+			return true;
+		}
+
 		function sendDragMoveFromStep(stepX: number, stepY: number): void {
 			const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
 			const baseCursor = getCurrentCursorPosition();
@@ -541,6 +705,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 
 			mouseGesture = gesture;
 			dragAssistGesture = null;
+			threeFingerScrollGesture = null;
 		}
 
 		function finalizeMouseGesture(touch: Touch | null, suppressTap = false): void {
@@ -639,11 +804,42 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		}
 
 		function handleViewportTouchStart(e: TouchEvent) {
+			if (threeFingerScrollGesture) {
+				if (e.touches.length === 3 && handleThreeFingerScrollMove(e.touches)) {
+					consumeTouchEvent(e);
+					return;
+				}
+				threeFingerScrollGesture = null;
+				if (e.touches.length > 0) {
+					ignoreSingleTouchUntilRelease = true;
+					twoFingerTapGesture = null;
+					pinchGesture = null;
+					consumeTouchEvent(e);
+					return;
+				}
+			}
+
+			if (e.touches.length === 3 && mouseGesture?.mode !== "drag") {
+				if (mouseGesture) {
+					const activeMouseTouch =
+						getTouchById(e.touches, mouseGesture.touchId) || e.touches[0];
+					finalizeMouseGesture(activeMouseTouch || null, true);
+				}
+				dragAssistGesture = null;
+				twoFingerTapGesture = null;
+				pinchGesture = null;
+				beginThreeFingerScrollGesture(e.touches);
+				ignoreSingleTouchUntilRelease = true;
+				consumeTouchEvent(e);
+				return;
+			}
+
 			if (e.touches.length >= 2) {
 				if (mouseGesture?.mode === "drag") {
 					ignoreSingleTouchUntilRelease = false;
 					twoFingerTapGesture = null;
 					pinchGesture = null;
+					threeFingerScrollGesture = null;
 					const assistTouch = getDragAssistTouch(e.touches);
 					if (assistTouch) {
 						handleDragAssistMove(assistTouch);
@@ -683,6 +879,36 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		}
 
 		function handleViewportTouchMove(e: TouchEvent) {
+			if (threeFingerScrollGesture) {
+				if (e.touches.length === 3 && handleThreeFingerScrollMove(e.touches)) {
+					consumeTouchEvent(e);
+					return;
+				}
+				threeFingerScrollGesture = null;
+				if (e.touches.length > 0) {
+					ignoreSingleTouchUntilRelease = true;
+					twoFingerTapGesture = null;
+					pinchGesture = null;
+					consumeTouchEvent(e);
+					return;
+				}
+			}
+
+			if (e.touches.length === 3 && mouseGesture?.mode !== "drag") {
+				if (mouseGesture) {
+					const activeMouseTouch =
+						getTouchById(e.touches, mouseGesture.touchId) || e.touches[0];
+					finalizeMouseGesture(activeMouseTouch || null, true);
+				}
+				dragAssistGesture = null;
+				twoFingerTapGesture = null;
+				pinchGesture = null;
+				beginThreeFingerScrollGesture(e.touches);
+				ignoreSingleTouchUntilRelease = true;
+				consumeTouchEvent(e);
+				return;
+			}
+
 			if (e.touches.length >= 2) {
 				if (mouseGesture?.mode === "drag") {
 					const primaryTouch = getTouchById(e.touches, mouseGesture.touchId);
@@ -707,6 +933,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 					}
 					twoFingerTapGesture = null;
 					pinchGesture = null;
+					threeFingerScrollGesture = null;
 					ignoreSingleTouchUntilRelease = false;
 					consumeTouchEvent(e);
 					return;
@@ -771,6 +998,25 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		}
 
 		function handleViewportTouchEnd(e: TouchEvent) {
+			if (threeFingerScrollGesture) {
+				if (e.touches.length === 3 && handleThreeFingerScrollMove(e.touches)) {
+					consumeTouchEvent(e);
+					return;
+				}
+				threeFingerScrollGesture = null;
+				dragAssistGesture = null;
+				twoFingerTapGesture = null;
+				pinchGesture = null;
+				if (e.touches.length > 0) {
+					ignoreSingleTouchUntilRelease = true;
+					consumeTouchEvent(e);
+					return;
+				}
+				ignoreSingleTouchUntilRelease = false;
+				consumeTouchEvent(e);
+				return;
+			}
+
 			if (e.touches.length === 0) {
 				if (mouseGesture) {
 					const releasedTouch =
@@ -778,6 +1024,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 					finalizeMouseGesture(releasedTouch, false);
 				}
 				dragAssistGesture = null;
+				threeFingerScrollGesture = null;
 				if (twoFingerTapGesture?.valid) {
 					const duration = Date.now() - twoFingerTapGesture.startTime;
 					if (duration <= TWO_FINGER_TAP_MAX_DURATION_MS) {
@@ -815,6 +1062,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				}
 				twoFingerTapGesture = null;
 				pinchGesture = null;
+				threeFingerScrollGesture = null;
 				consumeTouchEvent(e);
 				return;
 			}
@@ -893,21 +1141,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			const scale = display.getWidth() / rect.width;
 			const x = Math.round((e.clientX - rect.left) * scale);
 			const y = Math.round((e.clientY - rect.top) * scale);
-			client.sendMouseState(
-				new Guacamole.Mouse.State(
-					x,
-					y,
-					false,
-					false,
-					false,
-					e.deltaY < 0,
-					e.deltaY > 0,
-				),
-			);
-			// Release scroll buttons
-			client.sendMouseState(
-				new Guacamole.Mouse.State(x, y, false, false, false, false, false),
-			);
+			sendWheelFromRemote(x, y, e.deltaY < 0, e.deltaY > 0);
 			e.preventDefault();
 		}
 

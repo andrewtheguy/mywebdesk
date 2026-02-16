@@ -28,6 +28,32 @@ interface ConnectionTarget {
 	vncPort: string;
 }
 
+interface ViewportState {
+	width: number;
+	height: number;
+	offsetX: number;
+	offsetY: number;
+}
+
+function getViewportState(): ViewportState {
+	if (typeof window === "undefined") {
+		return {
+			width: 0,
+			height: 0,
+			offsetX: 0,
+			offsetY: 0,
+		};
+	}
+
+	const vp = window.visualViewport;
+	return {
+		width: vp ? vp.width : window.innerWidth,
+		height: vp ? vp.height : window.innerHeight,
+		offsetX: vp ? vp.offsetLeft : 0,
+		offsetY: vp ? vp.offsetTop : 0,
+	};
+}
+
 export default function App() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const {
@@ -47,6 +73,9 @@ export default function App() {
 	const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
 	const [connectionTargetError, setConnectionTargetError] = useState<string | null>(null);
 	const [connectionPassword, setConnectionPassword] = useState("");
+	const [viewportState, setViewportState] = useState<ViewportState>(() =>
+		getViewportState(),
+	);
 	const hiddenInputRef = useRef<HTMLInputElement>(null);
 	const clipboardInputRef = useRef<HTMLTextAreaElement>(null);
 	const fabDragStateRef = useRef<FabDragState | null>(null);
@@ -68,16 +97,46 @@ export default function App() {
 			try {
 				const res = await fetch("/api/config");
 				if (!res.ok) throw new Error(`HTTP ${res.status}`);
-				const data = (await res.json()) as ConnectionTarget;
+				const payload: unknown = await res.json();
+				if (!payload || typeof payload !== "object") {
+					console.error("Invalid /api/config payload (expected object):", payload);
+					throw new Error("Invalid config response: expected object payload");
+				}
+
+				const { vncHost, vncPort } = payload as {
+					vncHost?: unknown;
+					vncPort?: unknown;
+				};
+
+				if (typeof vncHost !== "string" || vncHost.trim().length === 0) {
+					console.error("Invalid /api/config payload (vncHost):", payload);
+					throw new Error("Invalid config response: vncHost must be a non-empty string");
+				}
+
+				let normalizedPort: string;
+				if (typeof vncPort === "number" && Number.isFinite(vncPort)) {
+					normalizedPort = String(vncPort);
+				} else if (typeof vncPort === "string" && vncPort.trim().length > 0) {
+					normalizedPort = vncPort.trim();
+				} else {
+					console.error("Invalid /api/config payload (vncPort):", payload);
+					throw new Error(
+						"Invalid config response: vncPort must be a non-empty string or number",
+					);
+				}
+
 				if (cancelled) return;
 				setConnectionTarget({
-					vncHost: data.vncHost,
-					vncPort: data.vncPort,
+					vncHost: vncHost.trim(),
+					vncPort: normalizedPort,
 				});
 				setConnectionTargetError(null);
-			} catch {
+			} catch (err) {
 				if (cancelled) return;
-				setConnectionTargetError("Unable to load connection target");
+				console.error("Failed loading connection target:", err);
+				setConnectionTargetError(
+					err instanceof Error ? err.message : "Unable to load connection target",
+				);
 			}
 		};
 
@@ -111,33 +170,62 @@ export default function App() {
 		setToolbarOpen((prev) => !prev);
 	}, []);
 
-	const clampFabPosition = useCallback((x: number, y: number): FabPosition => {
+	// Track viewport size/offset from visualViewport (fallback to window).
+	useEffect(() => {
+		const updateViewportState = () => {
+			const next = getViewportState();
+			setViewportState((prev) => {
+				if (
+					prev.width === next.width &&
+					prev.height === next.height &&
+					prev.offsetX === next.offsetX &&
+					prev.offsetY === next.offsetY
+				) {
+					return prev;
+				}
+				return next;
+			});
+		};
+
+		updateViewportState();
+		window.addEventListener("resize", updateViewportState);
 		const vp = window.visualViewport;
-		const viewportWidth = vp ? vp.width : window.innerWidth;
-		const viewportHeight = vp ? vp.height : window.innerHeight;
-		const offsetX = vp ? vp.offsetLeft : 0;
-		const offsetY = vp ? vp.offsetTop : 0;
-		const minX = offsetX + FAB_MARGIN;
-		const minY = offsetY + FAB_MARGIN;
-		const maxX = offsetX + Math.max(FAB_MARGIN, viewportWidth - FAB_SIZE - FAB_MARGIN);
-		const maxY = offsetY + Math.max(FAB_MARGIN, viewportHeight - FAB_SIZE - FAB_MARGIN);
+		if (vp) {
+			vp.addEventListener("resize", updateViewportState);
+			vp.addEventListener("scroll", updateViewportState);
+		}
+
+		return () => {
+			window.removeEventListener("resize", updateViewportState);
+			if (vp) {
+				vp.removeEventListener("resize", updateViewportState);
+				vp.removeEventListener("scroll", updateViewportState);
+			}
+		};
+	}, []);
+
+	const clampFabPosition = useCallback((x: number, y: number): FabPosition => {
+		const minX = viewportState.offsetX + FAB_MARGIN;
+		const minY = viewportState.offsetY + FAB_MARGIN;
+		const maxX =
+			viewportState.offsetX +
+			Math.max(FAB_MARGIN, viewportState.width - FAB_SIZE - FAB_MARGIN);
+		const maxY =
+			viewportState.offsetY +
+			Math.max(FAB_MARGIN, viewportState.height - FAB_SIZE - FAB_MARGIN);
 
 		return {
 			x: Math.min(Math.max(x, minX), maxX),
 			y: Math.min(Math.max(y, minY), maxY),
 		};
-	}, []);
+	}, [viewportState]);
 
 	const getDefaultFabPosition = useCallback((): FabPosition => {
-		const vp = window.visualViewport;
-		const viewportWidth = vp ? vp.width : window.innerWidth;
-		const offsetX = vp ? vp.offsetLeft : 0;
-		const offsetY = vp ? vp.offsetTop : 0;
 		return clampFabPosition(
-			offsetX + viewportWidth - FAB_SIZE - FAB_MARGIN,
-			offsetY + FAB_MARGIN,
+			viewportState.offsetX + viewportState.width - FAB_SIZE - FAB_MARGIN,
+			viewportState.offsetY + FAB_MARGIN,
 		);
-	}, [clampFabPosition]);
+	}, [clampFabPosition, viewportState]);
 
 	const handleFabPointerDown = useCallback(
 		(e: React.PointerEvent<HTMLButtonElement>) => {
@@ -282,45 +370,30 @@ export default function App() {
 	);
 
 	useEffect(() => {
-		const keepFabInViewport = () => {
-			setFabPosition((prev) => {
-				if (!prev) return prev;
-				return clampFabPosition(prev.x, prev.y);
-			});
-		};
+		setFabPosition((prev) => {
+			if (!prev) return prev;
+			return clampFabPosition(prev.x, prev.y);
+		});
+	}, [clampFabPosition, viewportState]);
 
-		window.addEventListener("resize", keepFabInViewport);
-		if (window.visualViewport) {
-			window.visualViewport.addEventListener("resize", keepFabInViewport);
-		}
+	const resolvedFabPosition = useMemo(
+		() => fabPosition ?? getDefaultFabPosition(),
+		[fabPosition, getDefaultFabPosition],
+	);
 
-		return () => {
-			window.removeEventListener("resize", keepFabInViewport);
-			if (window.visualViewport) {
-				window.visualViewport.removeEventListener("resize", keepFabInViewport);
-			}
-		};
-	}, [clampFabPosition]);
-
-	const resolvedFabPosition = fabPosition ?? getDefaultFabPosition();
-
-	const toolbarStyle = (() => {
-		const vp = window.visualViewport;
-		const viewportWidth = vp ? vp.width : window.innerWidth;
-		const viewportHeight = vp ? vp.height : window.innerHeight;
-		const offsetX = vp ? vp.offsetLeft : 0;
-		const offsetY = vp ? vp.offsetTop : 0;
-
-		const minLeft = offsetX + FAB_MARGIN;
+	const toolbarStyle = useMemo(() => {
+		const minLeft = viewportState.offsetX + FAB_MARGIN;
 		const maxLeft =
-			offsetX + Math.max(FAB_MARGIN, viewportWidth - TOOLBAR_WIDTH - FAB_MARGIN);
+			viewportState.offsetX +
+			Math.max(FAB_MARGIN, viewportState.width - TOOLBAR_WIDTH - FAB_MARGIN);
 		const desiredLeft = resolvedFabPosition.x + FAB_SIZE - TOOLBAR_WIDTH;
 		const left = Math.min(Math.max(desiredLeft, minLeft), maxLeft);
 
 		const topBelow = resolvedFabPosition.y + FAB_SIZE + TOOLBAR_GAP;
 		const topAboveAnchor = resolvedFabPosition.y - TOOLBAR_GAP;
-		const availableBelow = offsetY + viewportHeight - topBelow - FAB_MARGIN;
-		const availableAbove = topAboveAnchor - offsetY - FAB_MARGIN;
+		const availableBelow =
+			viewportState.offsetY + viewportState.height - topBelow - FAB_MARGIN;
+		const availableAbove = topAboveAnchor - viewportState.offsetY - FAB_MARGIN;
 		const placeBelow =
 			availableBelow >= TOOLBAR_MIN_HEIGHT || availableBelow >= availableAbove;
 		const maxHeight = Math.max(
@@ -347,7 +420,7 @@ export default function App() {
 			transform: "translateY(-100%)",
 			maxHeight: `${maxHeight}px`,
 		};
-	})();
+	}, [resolvedFabPosition, viewportState]);
 
 	return (
 		<div className="app">

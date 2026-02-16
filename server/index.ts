@@ -85,10 +85,6 @@ function shutdown(signal: NodeJS.Signals) {
 
 	// Close proxy websocket/tcp links first so ws sessions do not block server.close().
 	closeAll();
-	for (const socket of activeHttpSockets) {
-		socket.destroy();
-	}
-	activeHttpSockets.clear();
 
 	if (!server.listening) {
 		process.exit(0);
@@ -128,6 +124,16 @@ function shutdown(signal: NodeJS.Signals) {
 	} catch (err) {
 		console.error("Error closing lingering HTTP connections:", err);
 	}
+
+	// Fallback: force-destroy tracked sockets if graceful close did not drain quickly.
+	const destroyLingeringSocketsTimeout = setTimeout(() => {
+		if (activeHttpSockets.size === 0) return;
+		for (const socket of activeHttpSockets) {
+			socket.destroy();
+		}
+		activeHttpSockets.clear();
+	}, 1200);
+	destroyLingeringSocketsTimeout.unref();
 }
 
 process.on("SIGINT", () => shutdown("SIGINT"));

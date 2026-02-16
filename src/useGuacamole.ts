@@ -1140,7 +1140,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		displayEl.addEventListener("mouseup", handleMouse);
 		displayEl.addEventListener("mousemove", handleMouse);
 		displayEl.addEventListener("wheel", handleWheel, { passive: false });
-		displayEl.addEventListener("contextmenu", (e) => e.preventDefault());
+		displayEl.addEventListener("contextmenu", handleContextMenu);
 
 		function handleMouse(e: MouseEvent) {
 			const rect = displayEl.getBoundingClientRect();
@@ -1166,6 +1166,10 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 			const x = Math.round((e.clientX - rect.left) * scale);
 			const y = Math.round((e.clientY - rect.top) * scale);
 			sendWheelFromRemote(x, y, e.deltaY < 0, e.deltaY > 0);
+			e.preventDefault();
+		}
+
+		function handleContextMenu(e: MouseEvent) {
 			e.preventDefault();
 		}
 
@@ -1257,22 +1261,23 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		client.connect(params.toString());
 
 		// Store cleanup in ref for disconnect
-		(client as unknown as Record<string, unknown>).__cleanup = () => {
-			tunnel.onerror = null;
-			tunnel.onstatechange = null;
-			displayEl.removeEventListener("touchstart", handleViewportTouchStart);
-			displayEl.removeEventListener("touchmove", handleViewportTouchMove);
-			displayEl.removeEventListener("touchend", handleViewportTouchEnd);
-			displayEl.removeEventListener("touchcancel", handleViewportTouchEnd);
-			displayEl.removeEventListener("mousedown", handleMouse);
-			displayEl.removeEventListener("mouseup", handleMouse);
-			displayEl.removeEventListener("mousemove", handleMouse);
-			displayEl.removeEventListener("wheel", handleWheel);
-			window.removeEventListener("resize", scheduleResize);
-			window.removeEventListener("orientationchange", scheduleResize);
-			if (window.visualViewport) {
-				window.visualViewport.removeEventListener("resize", scheduleResize);
-			}
+			(client as unknown as Record<string, unknown>).__cleanup = () => {
+				tunnel.onerror = null;
+				tunnel.onstatechange = null;
+				displayEl.removeEventListener("touchstart", handleViewportTouchStart);
+				displayEl.removeEventListener("touchmove", handleViewportTouchMove);
+				displayEl.removeEventListener("touchend", handleViewportTouchEnd);
+				displayEl.removeEventListener("touchcancel", handleViewportTouchEnd);
+				displayEl.removeEventListener("mousedown", handleMouse);
+				displayEl.removeEventListener("mouseup", handleMouse);
+				displayEl.removeEventListener("mousemove", handleMouse);
+				displayEl.removeEventListener("wheel", handleWheel);
+				displayEl.removeEventListener("contextmenu", handleContextMenu);
+				window.removeEventListener("resize", scheduleResize);
+				window.removeEventListener("orientationchange", scheduleResize);
+				if (window.visualViewport) {
+					window.visualViewport.removeEventListener("resize", scheduleResize);
+				}
 			if (keyboardRef.current) {
 				keyboardRef.current.onkeydown = null;
 				keyboardRef.current.onkeyup = null;

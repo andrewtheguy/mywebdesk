@@ -643,7 +643,7 @@ export default function App() {
 	const handleDisplayKeyDownCapture = useCallback(
 		(e: React.KeyboardEvent<HTMLDivElement>) => {
 			if (state !== "connected" || !isDisplayFocused) return;
-			if (e.repeat || e.altKey) return;
+			if (e.repeat || e.altKey || e.shiftKey) return;
 			if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "v") return;
 
 			e.preventDefault();
@@ -979,6 +979,7 @@ export default function App() {
 			{state === "connected" && (
 				<button
 					type="button"
+					tabIndex={-1}
 					className={`fab ${toolbarOpen ? "fab-active" : ""} ${fabDragging ? "fab-dragging" : ""}`}
 					style={{
 						left: `${resolvedFabPosition.x}px`,

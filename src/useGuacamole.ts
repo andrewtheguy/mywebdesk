@@ -20,6 +20,8 @@ const MAX_ZOOM = 4;
 const PAN_ACTIVATION_THRESHOLD_PX = 12;
 const TAP_THRESHOLD_PX = 12;
 const DRAG_LONG_PRESS_MS = 140;
+const TWO_FINGER_TAP_MAX_MOVE_PX = 12;
+const TWO_FINGER_TAP_MAX_DURATION_MS = 260;
 
 interface PanOffset {
 	x: number;
@@ -41,6 +43,17 @@ interface MouseGesture {
 	lastClientY: number;
 	mode: "pending" | "pan" | "drag";
 	longPressTimer: ReturnType<typeof setTimeout> | null;
+}
+
+interface TwoFingerTapGesture {
+	startTime: number;
+	firstId: number;
+	secondId: number;
+	firstStartX: number;
+	firstStartY: number;
+	secondStartX: number;
+	secondStartY: number;
+	valid: boolean;
 }
 
 export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null>) {
@@ -162,6 +175,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 		let panOffset: PanOffset = { x: 0, y: 0 };
 		let pinchGesture: PinchGesture | null = null;
 		let mouseGesture: MouseGesture | null = null;
+		let twoFingerTapGesture: TwoFingerTapGesture | null = null;
 		let ignoreSingleTouchUntilRelease = false;
 		let cursorPosition = { x: 0, y: 0 };
 		let hasCursorPosition = false;
@@ -240,6 +254,52 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				if (touches[i].identifier === touchId) return touches[i];
 			}
 			return null;
+		}
+
+		function beginTwoFingerTapGesture(first: Touch, second: Touch): void {
+			twoFingerTapGesture = {
+				startTime: Date.now(),
+				firstId: first.identifier,
+				secondId: second.identifier,
+				firstStartX: first.clientX,
+				firstStartY: first.clientY,
+				secondStartX: second.clientX,
+				secondStartY: second.clientY,
+				valid: true,
+			};
+		}
+
+		function updateTwoFingerTapGesture(touches: TouchList): boolean {
+			if (!twoFingerTapGesture || !twoFingerTapGesture.valid) return false;
+			if (touches.length !== 2) {
+				twoFingerTapGesture.valid = false;
+				return false;
+			}
+
+			const first = getTouchById(touches, twoFingerTapGesture.firstId);
+			const second = getTouchById(touches, twoFingerTapGesture.secondId);
+			if (!first || !second) {
+				twoFingerTapGesture.valid = false;
+				return false;
+			}
+
+			const firstMoved = Math.hypot(
+				first.clientX - twoFingerTapGesture.firstStartX,
+				first.clientY - twoFingerTapGesture.firstStartY,
+			);
+			const secondMoved = Math.hypot(
+				second.clientX - twoFingerTapGesture.secondStartX,
+				second.clientY - twoFingerTapGesture.secondStartY,
+			);
+			if (
+				firstMoved > TWO_FINGER_TAP_MAX_MOVE_PX ||
+				secondMoved > TWO_FINGER_TAP_MAX_MOVE_PX
+			) {
+				twoFingerTapGesture.valid = false;
+				return false;
+			}
+
+			return true;
 		}
 
 		function clampCursorToDisplay(
@@ -327,6 +387,32 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 					true,
 					false,
 					false,
+					false,
+					false,
+				),
+			);
+			client.sendMouseState(
+				new Guacamole.Mouse.State(
+					cursor.x,
+					cursor.y,
+					false,
+					false,
+					false,
+					false,
+					false,
+				),
+			);
+		}
+
+		function sendRightClick(): void {
+			const cursor = getCurrentCursorPosition();
+			client.sendMouseState(
+				new Guacamole.Mouse.State(
+					cursor.x,
+					cursor.y,
+					false,
+					false,
+					true,
 					false,
 					false,
 				),
@@ -491,12 +577,19 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 					finalizeMouseGesture(activeMouseTouch || null, true);
 				}
 				ignoreSingleTouchUntilRelease = true;
-				startPinchGesture(e.touches[0], e.touches[1]);
+				if (e.touches.length === 2) {
+					beginTwoFingerTapGesture(e.touches[0], e.touches[1]);
+					startPinchGesture(e.touches[0], e.touches[1]);
+				} else {
+					twoFingerTapGesture = null;
+					pinchGesture = null;
+				}
 				consumeTouchEvent(e);
 				return;
 			}
 
 			if (e.touches.length === 1) {
+				twoFingerTapGesture = null;
 				if (ignoreSingleTouchUntilRelease) {
 					consumeTouchEvent(e);
 					return;
@@ -516,6 +609,16 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 					finalizeMouseGesture(activeMouseTouch || null, true);
 				}
 				ignoreSingleTouchUntilRelease = true;
+				if (e.touches.length !== 2) {
+					twoFingerTapGesture = null;
+				} else {
+					const isTwoFingerTapCandidate = updateTwoFingerTapGesture(e.touches);
+					if (isTwoFingerTapCandidate) {
+						consumeTouchEvent(e);
+						return;
+					}
+					twoFingerTapGesture = null;
+				}
 				const first = e.touches[0];
 				const second = e.touches[1];
 				if (!pinchGesture) {
@@ -569,7 +672,13 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 					finalizeMouseGesture(releasedTouch, true);
 				}
 				ignoreSingleTouchUntilRelease = true;
-				startPinchGesture(e.touches[0], e.touches[1]);
+				if (e.touches.length === 2) {
+					updateTwoFingerTapGesture(e.touches);
+					startPinchGesture(e.touches[0], e.touches[1]);
+				} else {
+					twoFingerTapGesture = null;
+					pinchGesture = null;
+				}
 				consumeTouchEvent(e);
 				return;
 			}
@@ -580,6 +689,13 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 						getTouchById(e.changedTouches, mouseGesture.touchId) || null;
 					finalizeMouseGesture(releasedTouch, false);
 				}
+				if (twoFingerTapGesture?.valid) {
+					const duration = Date.now() - twoFingerTapGesture.startTime;
+					if (duration <= TWO_FINGER_TAP_MAX_DURATION_MS) {
+						sendRightClick();
+					}
+				}
+				twoFingerTapGesture = null;
 				pinchGesture = null;
 				ignoreSingleTouchUntilRelease = false;
 				consumeTouchEvent(e);
@@ -599,6 +715,7 @@ export function useGuacamole(containerRef: React.RefObject<HTMLDivElement | null
 				finalizeMouseGesture(releasedTouch, false);
 			}
 
+			updateTwoFingerTapGesture(e.touches);
 			pinchGesture = null;
 			consumeTouchEvent(e);
 		}

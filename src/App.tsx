@@ -8,6 +8,8 @@ const DRAG_THRESHOLD = 6;
 const TOOLBAR_WIDTH = 260;
 const TOOLBAR_GAP = 12;
 const TOOLBAR_MIN_HEIGHT = 140;
+const CTRL_KEYSYM = 0xffe3;
+const V_KEYSYM = 0x0076;
 
 interface FabPosition {
 	x: number;
@@ -60,6 +62,7 @@ export default function App() {
 		connect,
 		disconnect,
 		sendClipboard,
+		sendKey,
 		sendCtrlAltDel,
 		state,
 		error,
@@ -76,11 +79,13 @@ export default function App() {
 		string | null
 	>(null);
 	const [connectionPassword, setConnectionPassword] = useState("");
+	const [isDisplayFocused, setIsDisplayFocused] = useState(false);
 	const [viewportState, setViewportState] = useState<ViewportState>(() =>
 		getViewportState(),
 	);
 	const hiddenInputRef = useRef<HTMLInputElement>(null);
 	const clipboardInputRef = useRef<HTMLTextAreaElement>(null);
+	const lastSyncedRemoteClipboardRef = useRef("");
 	const fabDragStateRef = useRef<FabDragState | null>(null);
 	const suppressFabClickRef = useRef(false);
 	const showKeyboardShortcut = useMemo(() => {
@@ -166,15 +171,36 @@ export default function App() {
 
 	// Sync remote clipboard to input
 	useEffect(() => {
-		if (clipboardText) setClipboardInput(clipboardText);
+		if (!clipboardText) return;
+		setClipboardInput(clipboardText);
+		if (clipboardText === lastSyncedRemoteClipboardRef.current) return;
+		lastSyncedRemoteClipboardRef.current = clipboardText;
+		if (!navigator.clipboard?.writeText) return;
+		void navigator.clipboard.writeText(clipboardText).catch(() => {
+			// Silent fallback when Clipboard API write is unavailable or blocked.
+		});
 	}, [clipboardText]);
 
 	// Clear password once a connection succeeds.
 	useEffect(() => {
 		if (state === "connected") {
 			setConnectionPassword("");
+			hiddenInputRef.current?.focus();
+		} else {
+			setIsDisplayFocused(false);
 		}
 	}, [state]);
+
+	const readLocalClipboardText = useCallback(async (): Promise<
+		string | null
+	> => {
+		if (!navigator.clipboard?.readText) return null;
+		try {
+			return await navigator.clipboard.readText();
+		} catch {
+			return null;
+		}
+	}, []);
 
 	const toggleToolbar = useCallback(() => {
 		setToolbarOpen((prev) => !prev);
@@ -319,6 +345,42 @@ export default function App() {
 		toggleToolbar();
 	}, [toggleToolbar]);
 
+	const handleDisplayFocus = useCallback(() => {
+		setIsDisplayFocused(true);
+	}, []);
+
+	const handleDisplayBlur = useCallback(() => {
+		setIsDisplayFocused(false);
+	}, []);
+
+	const handleDisplayPointerDown = useCallback(() => {
+		hiddenInputRef.current?.focus();
+	}, []);
+
+	const handleDisplayKeyDownCapture = useCallback(
+		(e: React.KeyboardEvent<HTMLDivElement>) => {
+			if (state !== "connected" || !isDisplayFocused) return;
+			if (e.repeat || e.altKey) return;
+			if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "v") return;
+
+			e.preventDefault();
+			e.stopPropagation();
+
+			void (async () => {
+				const text = await readLocalClipboardText();
+				if (text !== null) {
+					setClipboardInput(text);
+					sendClipboard(text);
+				}
+				sendKey(CTRL_KEYSYM, true);
+				sendKey(V_KEYSYM, true);
+				sendKey(V_KEYSYM, false);
+				sendKey(CTRL_KEYSYM, false);
+			})();
+		},
+		[isDisplayFocused, readLocalClipboardText, sendClipboard, sendKey, state],
+	);
+
 	const handlePasteClipboard = useCallback(() => {
 		sendClipboard(clipboardInput);
 	}, [clipboardInput, sendClipboard]);
@@ -444,17 +506,26 @@ export default function App() {
 
 	return (
 		<div className="app">
-			<div ref={containerRef} className="display-container" />
-
-			{/* Hidden input for mobile keyboard */}
-			<input
-				ref={hiddenInputRef}
-				className="hidden-input"
-				type="text"
-				autoCapitalize="off"
-				autoCorrect="off"
-				autoComplete="off"
-			/>
+			<div
+				ref={containerRef}
+				className="display-container"
+				role="application"
+				aria-label="Remote display"
+				onFocus={handleDisplayFocus}
+				onBlur={handleDisplayBlur}
+				onPointerDown={handleDisplayPointerDown}
+				onKeyDownCapture={handleDisplayKeyDownCapture}
+			>
+				{/* Hidden input for mobile keyboard */}
+				<input
+					ref={hiddenInputRef}
+					className="hidden-input"
+					type="text"
+					autoCapitalize="off"
+					autoCorrect="off"
+					autoComplete="off"
+				/>
+			</div>
 
 			{/* Connection overlay */}
 			{state !== "connected" && (

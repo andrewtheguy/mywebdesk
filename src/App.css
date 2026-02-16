@@ -12,6 +12,10 @@
 	overflow: hidden;
 }
 
+.display-container:focus {
+	outline: none;
+}
+
 .display-container > div {
 	transform-origin: top left;
 }

@@ -30,6 +30,11 @@ const THREE_FINGER_SCROLL_STEP_PX = 32;
 const HORIZONTAL_SCROLL_MODIFIER_KEYSYM = 0xffe1;
 const RESIZE_RETRY_DELAY_MS = 220;
 const MAX_RESIZE_RETRIES = 6;
+const GUAC_STATUS_MESSAGES: Record<number, string> = {
+	512: "Proxy/server error while establishing the session",
+	514: "Timed out waiting for the upstream connection to become ready",
+	519: "Unable to reach the configured VNC target",
+};
 
 interface PanOffset {
 	x: number;
@@ -81,11 +86,24 @@ interface ThreeFingerScrollGesture {
 	carryY: number;
 }
 
+function formatGuacStatusError(
+	status: Guacamole.Status,
+	fallbackLabel: string,
+): string {
+	const message = status.message?.trim();
+	if (message) return message;
+	const mapped = GUAC_STATUS_MESSAGES[status.code];
+	if (mapped) return `${mapped} (code ${status.code})`;
+	return `${fallbackLabel} (${status.code})`;
+}
+
 export function useGuacamole(
 	containerRef: React.RefObject<HTMLDivElement | null>,
 ) {
 	const clientRef = useRef<Guacamole.Client | null>(null);
 	const keyboardRef = useRef<Guacamole.Keyboard | null>(null);
+	const keyboardTargetRef = useRef<HTMLElement | Document | null>(null);
+	const displayElementRef = useRef<HTMLElement | null>(null);
 	const connectionIdRef = useRef(0);
 	const manualDisconnectRef = useRef(false);
 	const [state, setState] = useState<ConnectionState>("idle");
@@ -142,7 +160,7 @@ export function useGuacamole(
 					manualDisconnectRef.current
 				)
 					return;
-				setError(status.message || `Tunnel error code: ${status.code}`);
+				setError(formatGuacStatusError(status, "Tunnel error"));
 				setState("error");
 			};
 
@@ -172,7 +190,15 @@ export function useGuacamole(
 			displayEl.style.touchAction = "none";
 			displayEl.style.transformOrigin = "0 0";
 			displayEl.style.willChange = "transform";
+			const previousDisplayEl = displayElementRef.current;
+			if (
+				previousDisplayEl &&
+				previousDisplayEl.parentElement === containerEl
+			) {
+				containerEl.removeChild(previousDisplayEl);
+			}
 			containerEl.appendChild(displayEl);
+			displayElementRef.current = displayEl;
 
 			// State change handler
 			client.onstatechange = (clientState: number) => {
@@ -194,7 +220,7 @@ export function useGuacamole(
 
 			client.onerror = (status: Guacamole.Status) => {
 				if (connectionId !== connectionIdRef.current) return;
-				setError(status.message || `Error code: ${status.code}`);
+				setError(formatGuacStatusError(status, "Remote session error"));
 				setState("error");
 			};
 
@@ -215,7 +241,17 @@ export function useGuacamole(
 			};
 
 			// Keyboard
-			const keyboard = keyboardRef.current || new Guacamole.Keyboard(document);
+			let keyboard = keyboardRef.current;
+			if (!keyboard || keyboardTargetRef.current !== containerEl) {
+				if (keyboard) {
+					keyboard.onkeydown = null;
+					keyboard.onkeyup = null;
+					keyboard.reset();
+				}
+				keyboard = new Guacamole.Keyboard(containerEl);
+				keyboardRef.current = keyboard;
+				keyboardTargetRef.current = containerEl;
+			}
 			keyboardRef.current = keyboard;
 			keyboard.onkeydown = (keysym: number) => {
 				clientRef.current?.sendKeyEvent(true, keysym);
@@ -1336,6 +1372,12 @@ export function useGuacamole(
 					keyboardRef.current.onkeyup = null;
 					keyboardRef.current.reset();
 				}
+				if (displayElementRef.current === displayEl) {
+					displayElementRef.current = null;
+				}
+				if (displayEl.parentElement === containerEl) {
+					containerEl.removeChild(displayEl);
+				}
 				if (resizeTimer.current) clearTimeout(resizeTimer.current);
 				clearResizeRetryTimer();
 			};
@@ -1353,6 +1395,11 @@ export function useGuacamole(
 				keyboardRef.current.onkeyup = null;
 				keyboardRef.current.reset();
 			}
+			const displayEl = displayElementRef.current;
+			if (displayEl?.parentElement) {
+				displayEl.parentElement.removeChild(displayEl);
+			}
+			displayElementRef.current = null;
 			setState("disconnected");
 			return;
 		}
@@ -1363,13 +1410,7 @@ export function useGuacamole(
 		client.disconnect();
 		clientRef.current = null;
 		setState("disconnected");
-
-		// Remove display element
-		const container = containerRef.current;
-		if (container) {
-			while (container.firstChild) container.removeChild(container.firstChild);
-		}
-	}, [containerRef]);
+	}, []);
 
 	const sendClipboard = useCallback((text: string) => {
 		const client = clientRef.current;

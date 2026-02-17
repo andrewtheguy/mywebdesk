@@ -20,7 +20,9 @@ export type ConnectionState =
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 const PAN_ACTIVATION_THRESHOLD_PX = 8;
-const TAP_THRESHOLD_PX = 4;
+const PAN_CURSOR_SPEED = 1.5;
+const TAP_THRESHOLD_PX = 2;
+const TAP_MAX_DURATION_MS = 120;
 const DRAG_LONG_PRESS_MS = 140;
 const TWO_FINGER_TAP_MAX_MOVE_PX = 12;
 const TWO_FINGER_TAP_MAX_DURATION_MS = 260;
@@ -53,6 +55,7 @@ interface MouseGesture {
 	startClientY: number;
 	lastClientX: number;
 	lastClientY: number;
+	startTime: number;
 	mode: "pending" | "pan" | "drag";
 	longPressTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -696,9 +699,10 @@ export function useGuacamole(
 				baseCursor: { x: number; y: number },
 			): void {
 				const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
+				const speed = leftDown ? 1 : PAN_CURSOR_SPEED;
 				const desiredCursor = clampCursorToDisplay(
-					baseCursor.x + stepX / effectiveScale,
-					baseCursor.y + stepY / effectiveScale,
+					baseCursor.x + (stepX * speed) / effectiveScale,
+					baseCursor.y + (stepY * speed) / effectiveScale,
 				);
 
 				const visible = getVisibleRemoteBounds(effectiveScale);
@@ -791,6 +795,7 @@ export function useGuacamole(
 					startClientY: touch.clientY,
 					lastClientX: touch.clientX,
 					lastClientY: touch.clientY,
+					startTime: Date.now(),
 					mode: "pending",
 					longPressTimer: null,
 				};
@@ -832,7 +837,8 @@ export function useGuacamole(
 						endX - gesture.startClientX,
 						endY - gesture.startClientY,
 					);
-					if (moved <= TAP_THRESHOLD_PX) {
+					const duration = Date.now() - gesture.startTime;
+					if (moved <= TAP_THRESHOLD_PX && duration <= TAP_MAX_DURATION_MS) {
 						sendTapClick();
 					}
 				}

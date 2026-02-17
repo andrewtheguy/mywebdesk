@@ -118,6 +118,7 @@
 
 .btn-danger {
 	background: #e74c3c;
+	flex-basis: 100%;
 }
 
 .btn-danger:active {
@@ -282,8 +283,13 @@
 
 .toolbar-buttons {
 	display: flex;
-	flex-direction: column;
+	flex-wrap: wrap;
 	gap: 8px;
+}
+
+.toolbar-buttons .btn {
+	flex: 1;
+	min-width: 0;
 }
 
 .clipboard-notice {

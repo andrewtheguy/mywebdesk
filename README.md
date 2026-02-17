@@ -47,6 +47,8 @@ Serves the built frontend from `dist/` on port 18890.
 
 | Variable | Default | Description |
 |---|---|---|
+| `SITE_SECRET` | *(required)* | Secret used for site-wide authentication (see below) |
+| `VNC_PASSWORD` | | VNC server password |
 | `GUAC_SERVER_PORT` | `18890` | Dev server listen port (also used by Vite proxy target) |
 | `PORT` | `18890` | Production server listen port override |
 | `HOST` | `127.0.0.1` | Server bind address |
@@ -56,7 +58,7 @@ Serves the built frontend from `dist/` on port 18890.
 | `VNC_PORT` | `5901` | VNC server port |
 | `DEBUG_GUAC_PROXY` | `0` | Enable guac proxy debug logs when set to `1` |
 
-VNC password is provided in the connect form and sent at connect time; it is not read from environment variables.
+`SITE_SECRET` is required — the server will refuse to start without it. Set it in your `.env` file to any password of your choice.
 
 ## Browser requirements
 

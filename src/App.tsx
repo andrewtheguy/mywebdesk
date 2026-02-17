@@ -1178,7 +1178,7 @@ export default function App() {
 							className="btn btn-sm btn-help"
 							onClick={() => setShowGestureHelp(true)}
 						>
-							? Gestures
+							?
 						</button>
 						{showKeyboardShortcut && (
 							<button
@@ -1186,7 +1186,7 @@ export default function App() {
 								className="btn btn-sm"
 								onClick={handleShowKeyboard}
 							>
-								Show Keyboard
+								Keyboard
 							</button>
 						)}
 						<button

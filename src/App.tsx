@@ -36,7 +36,7 @@ const KEY_COMBOS: { label: string; keysyms: number[] }[] = [
 	{ label: "F5", keysyms: [F5_KEYSYM] },
 	{ label: "F11", keysyms: [F11_KEYSYM] },
 	{ label: "Ctrl+Esc", keysyms: [CTRL_KEYSYM, ESC_KEYSYM] },
-	{ label: "Super", keysyms: [SUPER_KEYSYM] },
+	{ label: "Win", keysyms: [SUPER_KEYSYM] },
 ];
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
@@ -160,6 +160,7 @@ export default function App() {
 		null,
 	);
 	const [isDisplayFocused, setIsDisplayFocused] = useState(false);
+	const [showGestureHelp, setShowGestureHelp] = useState(false);
 	const [viewportState, setViewportState] = useState<ViewportState>(() =>
 		getViewportState(),
 	);
@@ -1172,6 +1173,13 @@ export default function App() {
 					</div>
 
 					<div className="toolbar-section toolbar-buttons">
+						<button
+							type="button"
+							className="btn btn-sm btn-help"
+							onClick={() => setShowGestureHelp(true)}
+						>
+							? Gestures
+						</button>
 						{showKeyboardShortcut && (
 							<button
 								type="button"
@@ -1187,6 +1195,58 @@ export default function App() {
 							onClick={handleLogout}
 						>
 							Logout
+						</button>
+					</div>
+				</div>
+			)}
+
+			{/* Gesture help overlay */}
+			{showGestureHelp && (
+				// biome-ignore lint/a11y/useKeyWithClickEvents: tap-outside dismiss
+				// biome-ignore lint/a11y/noStaticElementInteractions: overlay backdrop
+				<div
+					className="gesture-help-overlay"
+					onClick={() => setShowGestureHelp(false)}
+				>
+					{/* biome-ignore lint/a11y/useKeyWithClickEvents: inner card */}
+					{/* biome-ignore lint/a11y/noStaticElementInteractions: inner card */}
+					<div
+						className="gesture-help-content"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<h2 className="gesture-help-title">Touch Gestures</h2>
+						<dl className="gesture-help-list">
+							<div className="gesture-help-item">
+								<dt>Tap</dt>
+								<dd>Left-click</dd>
+							</div>
+							<div className="gesture-help-item">
+								<dt>Long-press + second finger drag</dt>
+								<dd>Hold-drag (long-press to grab, second finger to move)</dd>
+							</div>
+							<div className="gesture-help-item">
+								<dt>One-finger drag</dt>
+								<dd>Move cursor + pan</dd>
+							</div>
+							<div className="gesture-help-item">
+								<dt>Two-finger tap</dt>
+								<dd>Right-click</dd>
+							</div>
+							<div className="gesture-help-item">
+								<dt>Two-finger pinch</dt>
+								<dd>Zoom</dd>
+							</div>
+							<div className="gesture-help-item">
+								<dt>Three-finger swipe</dt>
+								<dd>Scroll</dd>
+							</div>
+						</dl>
+						<button
+							type="button"
+							className="btn btn-sm"
+							onClick={() => setShowGestureHelp(false)}
+						>
+							Close
 						</button>
 					</div>
 				</div>

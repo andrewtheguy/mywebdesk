@@ -124,6 +124,14 @@
 	background: #c0392b;
 }
 
+.btn-help {
+	background: #9b59b6;
+}
+
+.btn-help:active:not(:disabled) {
+	background: #7d3c98;
+}
+
 /* FAB */
 .fab {
 	position: fixed;
@@ -295,4 +303,61 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+/* Gesture help overlay */
+.gesture-help-overlay {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: rgba(0, 0, 0, 0.8);
+	z-index: 3000;
+}
+
+.gesture-help-content {
+	width: min(340px, 90vw);
+	background: #1e1e1e;
+	border-radius: 12px;
+	padding: 20px;
+	color: #fff;
+	font-family: system-ui, sans-serif;
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.gesture-help-title {
+	margin: 0 0 14px;
+	font-size: 1.1rem;
+	font-weight: 600;
+}
+
+.gesture-help-list {
+	margin: 0 0 16px;
+	padding: 0;
+}
+
+.gesture-help-item {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 6px 0;
+	border-bottom: 1px solid #333;
+}
+
+.gesture-help-item:last-child {
+	border-bottom: none;
+}
+
+.gesture-help-item dt {
+	font-size: 0.85rem;
+	font-weight: 500;
+	flex-shrink: 0;
+}
+
+.gesture-help-item dd {
+	margin: 0;
+	font-size: 0.8rem;
+	color: #aaa;
+	text-align: right;
 }

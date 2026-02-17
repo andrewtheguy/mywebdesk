@@ -19,8 +19,8 @@ export type ConnectionState =
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
-const PAN_ACTIVATION_THRESHOLD_PX = 12;
-const TAP_THRESHOLD_PX = 12;
+const PAN_ACTIVATION_THRESHOLD_PX = 8;
+const TAP_THRESHOLD_PX = 4;
 const DRAG_LONG_PRESS_MS = 140;
 const TWO_FINGER_TAP_MAX_MOVE_PX = 12;
 const TWO_FINGER_TAP_MAX_DURATION_MS = 260;

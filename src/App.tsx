@@ -1191,10 +1191,15 @@ export default function App() {
 						)}
 						<button
 							type="button"
-							className="btn btn-sm btn-danger"
+							className="btn btn-sm btn-danger btn-disconnect"
 							onClick={handleLogout}
+							title="Disconnect"
 						>
-							Logout
+							<svg className="disconnect-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+								<path d="M18.36 6.64A9 9 0 1 1 5.64 6.64" />
+								<line x1="12" y1="2" x2="12" y2="12" />
+							</svg>
+							<span className="disconnect-label">Disconnect</span>
 						</button>
 					</div>
 				</div>

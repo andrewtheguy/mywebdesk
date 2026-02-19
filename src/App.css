@@ -125,6 +125,25 @@
 	background: #c0392b;
 }
 
+.btn-disconnect {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.disconnect-icon {
+	display: none;
+}
+
+@media (max-width: 600px) {
+	.disconnect-icon {
+		display: block;
+	}
+	.disconnect-label {
+		display: none;
+	}
+}
+
 .btn-help {
 	background: #9b59b6;
 }

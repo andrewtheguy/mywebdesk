@@ -47,7 +47,7 @@ Serves the built frontend from `dist/` on port 18890.
 
 | Variable | Default | Description |
 |---|---|---|
-| `SITE_SECRET` | *(required)* | Secret used for site-wide authentication (see below) |
+| `SITE_PASSWD` | *(required)* | Base64-encoded `username:bcrypt_hash` (see below) |
 | `VNC_PASSWORD` | | VNC server password |
 | `GUAC_SERVER_PORT` | `18890` | Dev server listen port (also used by Vite proxy target) |
 | `PORT` | `18890` | Production server listen port override |
@@ -58,7 +58,14 @@ Serves the built frontend from `dist/` on port 18890.
 | `VNC_PORT` | `5901` | VNC server port |
 | `DEBUG_GUAC_PROXY` | `0` | Enable guac proxy debug logs when set to `1` |
 
-`SITE_SECRET` is required — the server will refuse to start without it. Set it in your `.env` file to any password of your choice.
+`SITE_PASSWD` is required — the server will refuse to start without it. Generate a credential and add it to your `.env`:
+
+```bash
+bun server/gen-htpasswd.ts admin
+# outputs: SITE_PASSWD=YWRtaW46JDJiJDEwJC4uLg==
+```
+
+The output is a ready-to-paste `.env` line (base64-encoded `username:bcrypt_hash`, no escaping needed).
 
 ## Browser requirements
 

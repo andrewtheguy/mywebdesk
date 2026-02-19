@@ -2,22 +2,24 @@ let storedUsername = "";
 let storedHash = "";
 
 export function initHtpasswd(): void {
-	const raw = process.env.HTPASSWD;
+	const raw = process.env.SITE_PASSWD;
 	if (!raw) {
-		throw new Error("HTPASSWD environment variable is required");
+		throw new Error("SITE_PASSWD environment variable is required");
 	}
 
-	const line = raw.trim();
-	const idx = line.indexOf(":");
+	const decoded = Buffer.from(raw.trim(), "base64url").toString("utf-8");
+	const idx = decoded.indexOf(":");
 	if (idx === -1) {
-		throw new Error("HTPASSWD must be in format username:bcrypt_hash");
+		throw new Error(
+			"SITE_PASSWD must be a base64-encoded username:bcrypt_hash",
+		);
 	}
 
-	const username = line.slice(0, idx);
-	const hash = line.slice(idx + 1);
+	const username = decoded.slice(0, idx);
+	const hash = decoded.slice(idx + 1);
 
 	if (!username) {
-		throw new Error("HTPASSWD username must not be empty");
+		throw new Error("SITE_PASSWD username must not be empty");
 	}
 
 	if (!/^\$2[aby]\$/.test(hash)) {
@@ -28,7 +30,7 @@ export function initHtpasswd(): void {
 
 	storedUsername = username;
 	storedHash = hash;
-	console.log(`[htpasswd] loaded credentials for user "${username}"`);
+	console.log(`[auth] loaded credentials for user "${username}"`);
 }
 
 export async function verifyCredentials(

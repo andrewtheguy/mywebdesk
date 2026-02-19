@@ -51,4 +51,5 @@ const hash = await Bun.password.hash(password, {
 	algorithm: "bcrypt",
 	cost: 10,
 });
-console.log(`${username}:${hash}`);
+const encoded = Buffer.from(`${username}:${hash}`).toString("base64url");
+console.log(`SITE_PASSWD=${encoded}`);

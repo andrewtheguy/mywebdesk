@@ -52,4 +52,4 @@ const hash = await Bun.password.hash(password, {
 	cost: 10,
 });
 const encoded = Buffer.from(`${username}:${hash}`).toString("base64url");
-console.log(`SITE_PASSWD=${encoded}`);
+console.log(encoded);

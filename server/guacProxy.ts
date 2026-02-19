@@ -1,7 +1,7 @@
 import type { Server } from "node:http";
 import net from "node:net";
 import { type WebSocket, WebSocketServer } from "ws";
-import { getAuthTokenFromCookieHeader, validateAuthToken } from "./auth.js";
+import { getSessionTokenFromCookieHeader, isValidSession } from "./auth.js";
 import { registerSessionWebSocket, validateSessionId } from "./session.js";
 
 interface GuacProxyOptions {
@@ -233,8 +233,8 @@ export function attachGuacProxy(
 			socket.destroy();
 			return;
 		}
-		const cookieToken = getAuthTokenFromCookieHeader(req.headers.cookie);
-		if (!cookieToken || !validateAuthToken(cookieToken)) {
+		const cookieToken = getSessionTokenFromCookieHeader(req.headers.cookie);
+		if (!cookieToken || !isValidSession(cookieToken)) {
 			socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
 			socket.destroy();
 			return;

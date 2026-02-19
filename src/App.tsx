@@ -144,7 +144,8 @@ export default function App() {
 	const [fabPosition, setFabPosition] = useState<FabPosition | null>(null);
 	const [fabDragging, setFabDragging] = useState(false);
 	const [authState, setAuthState] = useState<AuthState>("checking");
-	const [loginSecret, setLoginSecret] = useState("");
+	const [loginUsername, setLoginUsername] = useState("");
+	const [loginPassword, setLoginPassword] = useState("");
 	const [loginError, setLoginError] = useState<string | null>(null);
 	const [loginLoading, setLoginLoading] = useState(false);
 	const [connectionTarget, setConnectionTarget] =
@@ -866,13 +867,17 @@ export default function App() {
 				const res = await fetch("/api/auth/login", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ secret: loginSecret }),
+					body: JSON.stringify({
+						username: loginUsername,
+						password: loginPassword,
+					}),
 				});
 				if (res.ok) {
-					setLoginSecret("");
+					setLoginUsername("");
+					setLoginPassword("");
 					setAuthState("authenticated");
 				} else {
-					setLoginError("Invalid secret");
+					setLoginError("Invalid credentials");
 				}
 			} catch {
 				setLoginError("Network error");
@@ -880,7 +885,7 @@ export default function App() {
 				setLoginLoading(false);
 			}
 		},
-		[loginSecret, loginLoading],
+		[loginUsername, loginPassword, loginLoading],
 	);
 
 	const handleConnect = useCallback(() => {
@@ -991,17 +996,32 @@ export default function App() {
 							{loginError && <p>Error: {loginError}</p>}
 							<form onSubmit={handleLogin}>
 								<label
-									htmlFor="login-secret"
+									htmlFor="login-username"
 									className="connect-password-label"
 								>
-									Site Secret
+									Username
 								</label>
 								<input
-									id="login-secret"
+									id="login-username"
+									type="text"
+									className="connect-password-input"
+									value={loginUsername}
+									onChange={(e) => setLoginUsername(e.target.value)}
+									autoComplete="username"
+									disabled={loginLoading}
+								/>
+								<label
+									htmlFor="login-password"
+									className="connect-password-label"
+								>
+									Password
+								</label>
+								<input
+									id="login-password"
 									type="password"
 									className="connect-password-input"
-									value={loginSecret}
-									onChange={(e) => setLoginSecret(e.target.value)}
+									value={loginPassword}
+									onChange={(e) => setLoginPassword(e.target.value)}
 									autoComplete="current-password"
 									disabled={loginLoading}
 								/>
@@ -1195,7 +1215,17 @@ export default function App() {
 							onClick={handleLogout}
 							title="Disconnect"
 						>
-							<svg className="disconnect-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+							<svg
+								className="disconnect-icon"
+								width="16"
+								height="16"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2.5"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
 								<path d="M18.36 6.64A9 9 0 1 1 5.64 6.64" />
 								<line x1="12" y1="2" x2="12" y2="12" />
 							</svg>

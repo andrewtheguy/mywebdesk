@@ -1,61 +1,64 @@
-import crypto from "node:crypto";
+export { initHtpasswd, verifyCredentials } from "./htpasswd.js";
 
-const AUTH_COOKIE_NAME = "auth_token";
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const PURGE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
-if (!process.env.SITE_SECRET) {
-	throw new Error("SITE_SECRET environment variable is required");
-}
-const SITE_SECRET: string = process.env.SITE_SECRET;
+const SESSION_COOKIE_NAME = "guac_session";
 
-let authToken: string | null = null;
-
-const MAX_COMPARE_LENGTH = 1024;
-
-function timingSafeEqual(a: string, b: string): boolean {
-	const bufA = Buffer.from(a, "utf-8");
-	const bufB = Buffer.from(b, "utf-8");
-	const maxLen = Math.min(
-		Math.max(bufA.length, bufB.length),
-		MAX_COMPARE_LENGTH,
-	);
-	const paddedA = Buffer.alloc(maxLen);
-	const paddedB = Buffer.alloc(maxLen);
-	bufA.copy(paddedA, 0, 0, Math.min(bufA.length, maxLen));
-	bufB.copy(paddedB, 0, 0, Math.min(bufB.length, maxLen));
-	return (
-		crypto.timingSafeEqual(paddedA, paddedB) && bufA.length === bufB.length
-	);
+interface SessionData {
+	username: string;
+	expiresAt: number;
 }
 
-export function validateSecret(candidate: string): boolean {
-	return timingSafeEqual(candidate, SITE_SECRET);
+const validSessions = new Map<string, SessionData>();
+
+function purgeExpiredSessions(): void {
+	const now = Date.now();
+	for (const [token, data] of validSessions) {
+		if (now >= data.expiresAt) {
+			validSessions.delete(token);
+		}
+	}
 }
 
-export function createAuthToken(): string {
-	authToken = crypto.randomUUID();
-	return authToken;
+setInterval(purgeExpiredSessions, PURGE_INTERVAL_MS).unref();
+
+export function createSession(username: string): string {
+	purgeExpiredSessions();
+	const token = crypto.randomUUID();
+	validSessions.set(token, {
+		username,
+		expiresAt: Date.now() + SESSION_TTL_MS,
+	});
+	return token;
 }
 
-export function validateAuthToken(token: string): boolean {
-	if (!authToken) return false;
-	return timingSafeEqual(token, authToken);
+export function isValidSession(token: string): boolean {
+	const data = validSessions.get(token);
+	if (!data) return false;
+	if (Date.now() >= data.expiresAt) {
+		validSessions.delete(token);
+		return false;
+	}
+	data.expiresAt = Date.now() + SESSION_TTL_MS;
+	return true;
 }
 
-export function revokeAuthToken(): void {
-	authToken = null;
+export function invalidateSession(token: string): void {
+	validSessions.delete(token);
 }
 
-export function getAuthCookieName(): string {
-	return AUTH_COOKIE_NAME;
+export function getSessionCookieName(): string {
+	return SESSION_COOKIE_NAME;
 }
 
-export function getAuthTokenFromCookieHeader(
+export function getSessionTokenFromCookieHeader(
 	header: string | undefined,
 ): string | null {
 	if (!header) return null;
 	for (const part of header.split(";")) {
 		const [name, ...rest] = part.split("=");
-		if (name.trim() === AUTH_COOKIE_NAME) {
+		if (name.trim() === SESSION_COOKIE_NAME) {
 			return rest.join("=").trim() || null;
 		}
 	}

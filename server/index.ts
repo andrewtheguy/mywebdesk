@@ -2,20 +2,18 @@ import type { Socket } from "node:net";
 import path from "node:path";
 import express from "express";
 import {
-	createAuthToken,
-	getAuthCookieName,
-	getAuthTokenFromCookieHeader,
-	revokeAuthToken,
-	validateAuthToken,
-	validateSecret,
+	createSession,
+	getSessionCookieName,
+	getSessionTokenFromCookieHeader,
+	initHtpasswd,
+	invalidateSession,
+	isValidSession,
+	verifyCredentials,
 } from "./auth.js";
 import { attachGuacProxy, closeAll, getVncDisplaySize } from "./guacProxy.js";
 import { claimSession, hasActiveSession } from "./session.js";
 
-if (!process.env.SITE_SECRET) {
-	console.error("SITE_SECRET env var is required");
-	process.exit(1);
-}
+initHtpasswd();
 
 const app = express();
 app.use(express.json());
@@ -37,43 +35,48 @@ const COOKIE_FLAGS = `HttpOnly; SameSite=Strict; Path=/${isProduction ? "; Secur
 
 // --- Public auth routes ---
 
-app.post("/api/auth/login", (req, res) => {
-	const { secret } = (req.body as { secret?: string } | undefined) ?? {};
-	if (!secret || !validateSecret(secret)) {
-		res.status(401).json({ error: "invalid_secret" });
+app.post("/api/auth/login", async (req, res) => {
+	const { username, password } =
+		(req.body as { username?: string; password?: string } | undefined) ?? {};
+	if (
+		!username ||
+		!password ||
+		!(await verifyCredentials(username, password))
+	) {
+		res.status(401).json({ error: "invalid_credentials" });
 		return;
 	}
-	const token = createAuthToken();
+	const token = createSession(username);
 	res.setHeader(
 		"Set-Cookie",
-		`${getAuthCookieName()}=${token}; ${COOKIE_FLAGS}`,
+		`${getSessionCookieName()}=${token}; ${COOKIE_FLAGS}`,
 	);
 	res.json({ ok: true });
 });
 
 app.post("/api/auth/logout", (req, res) => {
-	const token = getAuthTokenFromCookieHeader(req.headers.cookie);
-	if (token && validateAuthToken(token)) {
-		revokeAuthToken();
+	const token = getSessionTokenFromCookieHeader(req.headers.cookie);
+	if (token) {
+		invalidateSession(token);
 	}
 	res.setHeader(
 		"Set-Cookie",
-		`${getAuthCookieName()}=; ${COOKIE_FLAGS}; Max-Age=0`,
+		`${getSessionCookieName()}=; ${COOKIE_FLAGS}; Max-Age=0`,
 	);
 	res.json({ ok: true });
 });
 
 app.get("/api/auth/status", (req, res) => {
-	const token = getAuthTokenFromCookieHeader(req.headers.cookie);
-	const authenticated = !!token && validateAuthToken(token);
+	const token = getSessionTokenFromCookieHeader(req.headers.cookie);
+	const authenticated = !!token && isValidSession(token);
 	res.json({ authenticated });
 });
 
 // --- Auth middleware for /api/app ---
 
 app.use("/api/app", (req, res, next) => {
-	const token = getAuthTokenFromCookieHeader(req.headers.cookie);
-	if (!token || !validateAuthToken(token)) {
+	const token = getSessionTokenFromCookieHeader(req.headers.cookie);
+	if (!token || !isValidSession(token)) {
 		res.status(401).json({ error: "unauthorized" });
 		return;
 	}

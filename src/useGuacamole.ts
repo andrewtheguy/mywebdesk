@@ -19,10 +19,9 @@ export type ConnectionState =
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
-const PAN_ACTIVATION_THRESHOLD_PX = 8;
+const PAN_ACTIVATION_THRESHOLD_PX = 12;
 const PAN_CURSOR_SPEED = 1.5;
-const TAP_THRESHOLD_PX = 2;
-const TAP_MAX_DURATION_MS = 120;
+const FORCE_TAP_THRESHOLD = 0.15;
 const DRAG_LONG_PRESS_MS = 140;
 const TWO_FINGER_TAP_MAX_MOVE_PX = 12;
 const TWO_FINGER_TAP_MAX_DURATION_MS = 260;
@@ -55,7 +54,7 @@ interface MouseGesture {
 	startClientY: number;
 	lastClientX: number;
 	lastClientY: number;
-	startTime: number;
+	maxForce: number;
 	mode: "pending" | "pan" | "drag";
 	longPressTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -795,7 +794,7 @@ export function useGuacamole(
 					startClientY: touch.clientY,
 					lastClientX: touch.clientX,
 					lastClientY: touch.clientY,
-					startTime: Date.now(),
+					maxForce: touch.force ?? 0,
 					mode: "pending",
 					longPressTimer: null,
 				};
@@ -825,20 +824,16 @@ export function useGuacamole(
 				if (!mouseGesture) return;
 
 				const gesture = mouseGesture;
-				const endX = touch ? touch.clientX : gesture.lastClientX;
-				const endY = touch ? touch.clientY : gesture.lastClientY;
+				if (touch) {
+					gesture.maxForce = Math.max(gesture.maxForce, touch.force ?? 0);
+				}
 				clearMouseGestureTimer(gesture);
 
 				if (gesture.mode === "drag") {
 					const cursor = getCurrentCursorPosition();
 					sendMouseFromRemote(cursor.x, cursor.y, false);
 				} else if (!suppressTap && gesture.mode === "pending") {
-					const moved = Math.hypot(
-						endX - gesture.startClientX,
-						endY - gesture.startClientY,
-					);
-					const duration = Date.now() - gesture.startTime;
-					if (moved <= TAP_THRESHOLD_PX && duration <= TAP_MAX_DURATION_MS) {
+					if (gesture.maxForce >= FORCE_TAP_THRESHOLD) {
 						sendTapClick();
 					}
 				}
@@ -855,6 +850,7 @@ export function useGuacamole(
 				const stepY = touch.clientY - gesture.lastClientY;
 				gesture.lastClientX = touch.clientX;
 				gesture.lastClientY = touch.clientY;
+				gesture.maxForce = Math.max(gesture.maxForce, touch.force ?? 0);
 
 				const totalDx = touch.clientX - gesture.startClientX;
 				const totalDy = touch.clientY - gesture.startClientY;

@@ -28,7 +28,7 @@ const HOST = process.env.HOST || "127.0.0.1";
 
 const GUACD_HOST = process.env.GUACD_HOST || "127.0.0.1";
 const GUACD_PORT = Number.parseInt(process.env.GUACD_PORT || "14822", 10);
-const VNC_HOST = process.env.VNC_HOST || "169.254.0.1";
+const VNC_HOST = process.env.VNC_HOST || "127.0.0.1";
 const VNC_PORT = process.env.VNC_PORT || "5901";
 
 const COOKIE_FLAGS = `HttpOnly; SameSite=Strict; Path=/${isProduction ? "; Secure" : ""}`;

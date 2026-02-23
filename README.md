@@ -19,7 +19,7 @@ Browser (Vite + React + guacamole-common-js)
     ↓ WebSocket (/guac/ws)
 Express + ws (WebSocket-to-TCP bridge, port 18890)
     ↓ Raw TCP (Guacamole protocol)
-guacd (port 14822)
+guacd (port 14822 in prod, 24822 in dev)
     ↓ VNC protocol
 TigerVNC (port 5901)
 ```
@@ -29,7 +29,16 @@ TigerVNC (port 5901)
 ```bash
 cp .env.example .env   # edit connection settings as needed
 bun install
-bun run dev
+bun run dev:guacd      # start guacd in a container (run separately, keeps running)
+bun run dev            # start the dev server + Vite
+```
+
+The `dev:guacd` script runs guacd in a Podman container with `pasta` networking (`--map-host-loopback,169.254.0.1`), publishing port `24822` on localhost. Required `.env` settings for development:
+
+```
+VNC_HOST=169.254.0.1
+GUACD_HOST=127.0.0.1
+GUACD_PORT=24822
 ```
 
 Open http://localhost:5173 — Vite proxies `/guac/ws` and `/api` to the Express server on `GUAC_SERVER_PORT` (default `18890`).
@@ -53,7 +62,7 @@ Serves the built frontend from `dist/` on port 18890.
 | `PORT` | `18890` | Production server listen port override |
 | `HOST` | `127.0.0.1` | Server bind address |
 | `GUACD_HOST` | `127.0.0.1` | guacd hostname |
-| `GUACD_PORT` | `14822` | guacd port |
+| `GUACD_PORT` | `14822` | guacd port (use `24822` for dev) |
 | `VNC_HOST` | `169.254.0.1` | VNC server hostname |
 | `VNC_PORT` | `5901` | VNC server port |
 | `DEBUG_GUAC_PROXY` | `0` | Enable guac proxy debug logs when set to `1` |

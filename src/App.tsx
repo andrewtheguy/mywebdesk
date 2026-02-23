@@ -1258,8 +1258,11 @@ export default function App() {
                 <dd>Left-click</dd>
               </div>
               <div className="gesture-help-item">
-                <dt>Long-press + second finger drag</dt>
-                <dd>Hold-drag (long-press to grab, second finger to move)</dd>
+                <dt>Double-tap hold + second finger drag</dt>
+                <dd>
+                  Select-drag (tap once, tap again and hold, second finger to
+                  move)
+                </dd>
               </div>
               <div className="gesture-help-item">
                 <dt>One-finger drag</dt>

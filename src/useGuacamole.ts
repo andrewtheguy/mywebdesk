@@ -275,6 +275,7 @@ export function useGuacamole(
       let threeFingerScrollGesture: ThreeFingerScrollGesture | null = null;
       let ignoreSingleTouchUntilRelease = false;
       let lastTapTime = 0;
+      let pendingTapTimer: ReturnType<typeof setTimeout> | null = null;
       let cursorPosition = { x: 0, y: 0 };
       let hasCursorPosition = false;
       let nativeDisplaySize: { width: number; height: number } | null = null;
@@ -785,6 +786,13 @@ export function useGuacamole(
         sendDragMoveFromStep(stepX, stepY);
       }
 
+      function cancelPendingTap(): void {
+        if (pendingTapTimer !== null) {
+          clearTimeout(pendingTapTimer);
+          pendingTapTimer = null;
+        }
+      }
+
       function beginMouseGesture(touch: Touch): void {
         const now = Date.now();
         const isSecondTap = now - lastTapTime <= DOUBLE_TAP_WINDOW_MS;
@@ -802,6 +810,8 @@ export function useGuacamole(
         };
 
         if (isSecondTap) {
+          cancelPendingTap();
+          lastTapTime = 0;
           const cursor = getCurrentCursorPosition();
           sendMouseFromRemote(cursor.x, cursor.y, true);
         }
@@ -824,7 +834,6 @@ export function useGuacamole(
         if (gesture.mode === "drag") {
           const cursor = getCurrentCursorPosition();
           sendMouseFromRemote(cursor.x, cursor.y, false);
-        } else if (!suppressTap && gesture.mode === "pending") {
           const duration = Date.now() - gesture.startTime;
           if (
             !gesture.moved &&
@@ -832,7 +841,20 @@ export function useGuacamole(
             gesture.maxForce >= FORCE_TAP_THRESHOLD
           ) {
             sendTapClick();
+          }
+        } else if (!suppressTap && gesture.mode === "pending") {
+          const duration = Date.now() - gesture.startTime;
+          if (
+            !gesture.moved &&
+            duration <= TAP_MAX_DURATION_MS &&
+            gesture.maxForce >= FORCE_TAP_THRESHOLD
+          ) {
             lastTapTime = Date.now();
+            cancelPendingTap();
+            pendingTapTimer = setTimeout(() => {
+              pendingTapTimer = null;
+              sendTapClick();
+            }, DOUBLE_TAP_WINDOW_MS);
           }
         }
 
@@ -881,7 +903,10 @@ export function useGuacamole(
           return;
         }
 
-        if (gesture.mode === "drag") return;
+        if (gesture.mode === "drag") {
+          sendDragMoveFromStep(stepX, stepY);
+          return;
+        }
       }
 
       function startPinchGesture(first: Touch, second: Touch): void {
@@ -900,6 +925,7 @@ export function useGuacamole(
       }
 
       function handleViewportTouchStart(e: TouchEvent) {
+        cancelPendingTap();
         if (threeFingerScrollGesture) {
           if (
             e.touches.length === 3 &&

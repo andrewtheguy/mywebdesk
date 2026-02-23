@@ -20,11 +20,12 @@ export type ConnectionState =
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 const TAP_MAX_MOVE_PX = 4;
-const TAP_MAX_DURATION_MS = 70;
+const TAP_MAX_DURATION_MS = 200;
 const PAN_ACTIVATION_THRESHOLD_PX = 12;
 const PAN_CURSOR_SPEED = 1.5;
 const FORCE_TAP_THRESHOLD = 0.15;
-const DRAG_LONG_PRESS_MS = 140;
+const DOUBLE_TAP_WINDOW_MS = 300;
+const DOUBLE_TAP_HOLD_MS = 100;
 const TWO_FINGER_TAP_MAX_MOVE_PX = 12;
 const TWO_FINGER_TAP_MAX_DURATION_MS = 260;
 const THREE_FINGER_SCROLL_AXIS_LOCK_PX = 10;
@@ -59,7 +60,8 @@ interface MouseGesture {
   maxForce: number;
   startTime: number;
   mode: "pending" | "pan" | "drag";
-  longPressTimer: ReturnType<typeof setTimeout> | null;
+  moved: boolean;
+  holdTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface DragAssistGesture {
@@ -274,6 +276,7 @@ export function useGuacamole(
       let twoFingerTapGesture: TwoFingerTapGesture | null = null;
       let threeFingerScrollGesture: ThreeFingerScrollGesture | null = null;
       let ignoreSingleTouchUntilRelease = false;
+      let lastTapTime = 0;
       let cursorPosition = { x: 0, y: 0 };
       let hasCursorPosition = false;
       let nativeDisplaySize: { width: number; height: number } | null = null;
@@ -785,12 +788,15 @@ export function useGuacamole(
       }
 
       function clearMouseGestureTimer(gesture: MouseGesture | null): void {
-        if (!gesture?.longPressTimer) return;
-        clearTimeout(gesture.longPressTimer);
-        gesture.longPressTimer = null;
+        if (!gesture?.holdTimer) return;
+        clearTimeout(gesture.holdTimer);
+        gesture.holdTimer = null;
       }
 
       function beginMouseGesture(touch: Touch): void {
+        const now = Date.now();
+        const isSecondTap = now - lastTapTime <= DOUBLE_TAP_WINDOW_MS;
+
         const gesture: MouseGesture = {
           touchId: touch.identifier,
           startClientX: touch.clientX,
@@ -798,23 +804,23 @@ export function useGuacamole(
           lastClientX: touch.clientX,
           lastClientY: touch.clientY,
           maxForce: touch.force ?? 0,
-          startTime: Date.now(),
+          startTime: now,
           mode: "pending",
-          longPressTimer: null,
+          moved: false,
+          holdTimer: null,
         };
 
-        gesture.longPressTimer = setTimeout(() => {
-          if (!mouseGesture || mouseGesture.touchId !== gesture.touchId) return;
-          if (mouseGesture.mode !== "pending") return;
-          const moved = Math.hypot(
-            mouseGesture.lastClientX - mouseGesture.startClientX,
-            mouseGesture.lastClientY - mouseGesture.startClientY,
-          );
-          if (moved >= PAN_ACTIVATION_THRESHOLD_PX) return;
-          mouseGesture.mode = "drag";
-          const cursor = getCurrentCursorPosition();
-          sendMouseFromRemote(cursor.x, cursor.y, true);
-        }, DRAG_LONG_PRESS_MS);
+        if (isSecondTap) {
+          gesture.holdTimer = setTimeout(() => {
+            if (!mouseGesture || mouseGesture.touchId !== gesture.touchId)
+              return;
+            if (mouseGesture.mode !== "pending") return;
+            if (mouseGesture.moved) return;
+            mouseGesture.mode = "drag";
+            const cursor = getCurrentCursorPosition();
+            sendMouseFromRemote(cursor.x, cursor.y, true);
+          }, DOUBLE_TAP_HOLD_MS);
+        }
 
         mouseGesture = gesture;
         dragAssistGesture = null;
@@ -837,17 +843,14 @@ export function useGuacamole(
           const cursor = getCurrentCursorPosition();
           sendMouseFromRemote(cursor.x, cursor.y, false);
         } else if (!suppressTap && gesture.mode === "pending") {
-          const totalMove = Math.hypot(
-            gesture.lastClientX - gesture.startClientX,
-            gesture.lastClientY - gesture.startClientY,
-          );
           const duration = Date.now() - gesture.startTime;
           if (
-            totalMove < TAP_MAX_MOVE_PX &&
+            !gesture.moved &&
             duration <= TAP_MAX_DURATION_MS &&
             gesture.maxForce >= FORCE_TAP_THRESHOLD
           ) {
             sendTapClick();
+            lastTapTime = Date.now();
           }
         }
 
@@ -867,6 +870,10 @@ export function useGuacamole(
 
         const totalDx = touch.clientX - gesture.startClientX;
         const totalDy = touch.clientY - gesture.startClientY;
+
+        if (!gesture.moved && Math.hypot(totalDx, totalDy) >= TAP_MAX_MOVE_PX) {
+          gesture.moved = true;
+        }
 
         if (
           gesture.mode === "pending" &&

@@ -20,6 +20,7 @@ export type ConnectionState =
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 const TAP_MAX_MOVE_PX = 6;
+const TAP_MAX_DURATION_MS = 120;
 const PAN_ACTIVATION_THRESHOLD_PX = 12;
 const PAN_CURSOR_SPEED = 1.5;
 const FORCE_TAP_THRESHOLD = 0.15;
@@ -56,6 +57,7 @@ interface MouseGesture {
   lastClientX: number;
   lastClientY: number;
   maxForce: number;
+  startTime: number;
   mode: "pending" | "pan" | "drag";
   longPressTimer: ReturnType<typeof setTimeout> | null;
 }
@@ -796,6 +798,7 @@ export function useGuacamole(
           lastClientX: touch.clientX,
           lastClientY: touch.clientY,
           maxForce: touch.force ?? 0,
+          startTime: Date.now(),
           mode: "pending",
           longPressTimer: null,
         };
@@ -838,8 +841,10 @@ export function useGuacamole(
             gesture.lastClientX - gesture.startClientX,
             gesture.lastClientY - gesture.startClientY,
           );
+          const duration = Date.now() - gesture.startTime;
           if (
             totalMove < TAP_MAX_MOVE_PX &&
+            duration <= TAP_MAX_DURATION_MS &&
             gesture.maxForce >= FORCE_TAP_THRESHOLD
           ) {
             sendTapClick();

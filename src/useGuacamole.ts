@@ -19,6 +19,7 @@ export type ConnectionState =
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
+const TAP_MAX_MOVE_PX = 6;
 const PAN_ACTIVATION_THRESHOLD_PX = 12;
 const PAN_CURSOR_SPEED = 1.5;
 const FORCE_TAP_THRESHOLD = 0.15;
@@ -833,7 +834,14 @@ export function useGuacamole(
           const cursor = getCurrentCursorPosition();
           sendMouseFromRemote(cursor.x, cursor.y, false);
         } else if (!suppressTap && gesture.mode === "pending") {
-          if (gesture.maxForce >= FORCE_TAP_THRESHOLD) {
+          const totalMove = Math.hypot(
+            gesture.lastClientX - gesture.startClientX,
+            gesture.lastClientY - gesture.startClientY,
+          );
+          if (
+            totalMove < TAP_MAX_MOVE_PX &&
+            gesture.maxForce >= FORCE_TAP_THRESHOLD
+          ) {
             sendTapClick();
           }
         }

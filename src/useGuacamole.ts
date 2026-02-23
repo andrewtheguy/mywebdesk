@@ -794,6 +794,8 @@ export function useGuacamole(
       }
 
       function beginMouseGesture(touch: Touch): void {
+        clearMouseGestureTimer(mouseGesture);
+
         const now = Date.now();
         const isSecondTap = now - lastTapTime <= DOUBLE_TAP_WINDOW_MS;
 

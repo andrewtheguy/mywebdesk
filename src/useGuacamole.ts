@@ -25,7 +25,6 @@ const PAN_ACTIVATION_THRESHOLD_PX = 12;
 const PAN_CURSOR_SPEED = 1.5;
 const FORCE_TAP_THRESHOLD = 0.15;
 const DOUBLE_TAP_WINDOW_MS = 300;
-const DOUBLE_TAP_HOLD_MS = 100;
 const TWO_FINGER_TAP_MAX_MOVE_PX = 12;
 const TWO_FINGER_TAP_MAX_DURATION_MS = 260;
 const THREE_FINGER_SCROLL_AXIS_LOCK_PX = 10;
@@ -61,7 +60,6 @@ interface MouseGesture {
   startTime: number;
   mode: "pending" | "pan" | "drag";
   moved: boolean;
-  holdTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface DragAssistGesture {
@@ -787,15 +785,7 @@ export function useGuacamole(
         sendDragMoveFromStep(stepX, stepY);
       }
 
-      function clearMouseGestureTimer(gesture: MouseGesture | null): void {
-        if (!gesture?.holdTimer) return;
-        clearTimeout(gesture.holdTimer);
-        gesture.holdTimer = null;
-      }
-
       function beginMouseGesture(touch: Touch): void {
-        clearMouseGestureTimer(mouseGesture);
-
         const now = Date.now();
         const isSecondTap = now - lastTapTime <= DOUBLE_TAP_WINDOW_MS;
 
@@ -807,21 +797,13 @@ export function useGuacamole(
           lastClientY: touch.clientY,
           maxForce: touch.force ?? 0,
           startTime: now,
-          mode: "pending",
+          mode: isSecondTap ? "drag" : "pending",
           moved: false,
-          holdTimer: null,
         };
 
         if (isSecondTap) {
-          gesture.holdTimer = setTimeout(() => {
-            if (!mouseGesture || mouseGesture.touchId !== gesture.touchId)
-              return;
-            if (mouseGesture.mode !== "pending") return;
-            if (mouseGesture.moved) return;
-            mouseGesture.mode = "drag";
-            const cursor = getCurrentCursorPosition();
-            sendMouseFromRemote(cursor.x, cursor.y, true);
-          }, DOUBLE_TAP_HOLD_MS);
+          const cursor = getCurrentCursorPosition();
+          sendMouseFromRemote(cursor.x, cursor.y, true);
         }
 
         mouseGesture = gesture;
@@ -839,8 +821,6 @@ export function useGuacamole(
         if (touch) {
           gesture.maxForce = Math.max(gesture.maxForce, touch.force ?? 0);
         }
-        clearMouseGestureTimer(gesture);
-
         if (gesture.mode === "drag") {
           const cursor = getCurrentCursorPosition();
           sendMouseFromRemote(cursor.x, cursor.y, false);
@@ -881,7 +861,6 @@ export function useGuacamole(
           gesture.mode === "pending" &&
           Math.hypot(totalDx, totalDy) >= PAN_ACTIVATION_THRESHOLD_PX
         ) {
-          clearMouseGestureTimer(gesture);
           gesture.mode = "pan";
         }
 

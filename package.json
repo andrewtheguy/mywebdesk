@@ -7,6 +7,7 @@
 		"dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
 		"dev:client": "vite",
 		"dev:server": "bun --watch server/index.ts",
+		"dev:guacd": "podman run --replace --rm --name guacd-dev --network=pasta:--map-host-loopback,169.254.0.1 -p 127.0.0.1:24822:4822 guacamole/guacd:1.6.0 /opt/guacamole/sbin/guacd -f -b 0.0.0.0 -l 4822",
 		"build": "vite build",
 		"start": "NODE_ENV=production bun server/index.ts"
 	},

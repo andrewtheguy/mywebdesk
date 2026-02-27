@@ -32,7 +32,6 @@ export interface SoftKeyModifiers {
   ctrl: boolean;
   alt: boolean;
   shift: boolean;
-  super: boolean;
 }
 
 export type SoftKeyboardScreen = "primary" | "secondary";
@@ -207,13 +206,7 @@ const ROW_NAV_ARROWS: SoftKeyDefinition[] = [
   s("Right", XK_Right, 1.5), // →
 ];
 
-const ROW_NAV_BOTTOM: SoftKeyDefinition[] = [
-  s("Tab", XK_Tab, 1.3),
-  s("Ctrl", XK_Control_L, 1.3),
-  s("Alt", XK_Alt_L, 1.3),
-  s("Space", XK_space, 3),
-  s("Enter", XK_Return, 2),
-];
+const ROW_NAV_BOTTOM = ROW_BOTTOM;
 
 export const SECONDARY_SCREEN_ROWS: SoftKeyDefinition[][] = [
   ROW_SYMBOLS_1,
@@ -245,7 +238,6 @@ export const MODIFIER_KEYSYMS = {
   ctrl: XK_Control_L,
   alt: XK_Alt_L,
   shift: XK_Shift_L,
-  super: XK_Super_L,
 } as const;
 
 // ── Desktop PC keyboard layout ──

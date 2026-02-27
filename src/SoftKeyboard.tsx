@@ -33,7 +33,6 @@ const MODIFIER_LABELS: Record<keyof SoftKeyModifiers, string> = {
   ctrl: "Ctrl",
   alt: "Alt",
   shift: "Shift",
-  super: "Super",
 };
 
 // Keys that should toggle sticky modifiers rather than repeat
@@ -212,7 +211,7 @@ const ALT_DEF: SpecialSoftKey = {
 const SUPER_DEF: SpecialSoftKey = {
   type: "special",
   label: "Super",
-  keysym: MODIFIER_KEYSYMS.super,
+  keysym: 0xffeb,
 };
 
 // ── DesktopKeyboardGrid ──
@@ -329,7 +328,6 @@ export function SoftKeyboardPanel({
     ctrl: false,
     alt: false,
     shift: false,
-    super: false,
   });
   const [screen, setScreen] = useState<SoftKeyboardScreen>("primary");
   const isDesktop = useIsDesktop();
@@ -409,7 +407,7 @@ export function SoftKeyboardPanel({
         sendKey(keysym, true);
         sendKey(keysym, false);
         for (const mk of activeModKeysyms.reverse()) sendKey(mk, false);
-        setModifiers({ ctrl: false, alt: false, shift: false, super: false });
+        setModifiers({ ctrl: false, alt: false, shift: false });
       } else {
         sendKey(keysym, true);
         sendKey(keysym, false);

@@ -1,47 +1,40 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import { SoftKeyboardPanel } from "./SoftKeyboard";
 import { useGuacamole } from "./useGuacamole";
 
 const FAB_SIZE = 48;
-const FAB_MARGIN = 16;
+const FAB_MARGIN = 0;
 const DRAG_THRESHOLD = 6;
-const TOOLBAR_WIDTH = 260;
+const TOOLBAR_CONTENT_WIDTH = 260;
+const TOOLBAR_HORIZONTAL_PADDING = 16;
+const TOOLBAR_RENDERED_WIDTH =
+  TOOLBAR_CONTENT_WIDTH + TOOLBAR_HORIZONTAL_PADDING * 2;
 const TOOLBAR_GAP = 12;
 const TOOLBAR_MIN_HEIGHT = 140;
 const CTRL_KEYSYM = 0xffe3;
 const ALT_KEYSYM = 0xffe9;
-const SHIFT_KEYSYM = 0xffe1;
-const SUPER_KEYSYM = 0xffeb;
-const TAB_KEYSYM = 0xff09;
-const ESC_KEYSYM = 0xff1b;
-const DEL_KEYSYM = 0xffff;
+const V_KEYSYM = 0x0076;
+const R_KEYSYM = 0x0072;
+const T_KEYSYM = 0x0074;
+const W_KEYSYM = 0x0077;
 const F4_KEYSYM = 0xffc1;
 const F5_KEYSYM = 0xffc2;
 const F11_KEYSYM = 0xffc8;
-const W_KEYSYM = 0x0077;
-const T_KEYSYM = 0x0074;
-const N_KEYSYM = 0x006e;
-const V_KEYSYM = 0x0076;
-const L_KEYSYM = 0x006c;
-
-const KEY_COMBOS: { label: string; keysyms: number[] }[] = [
-  { label: "Ctrl+W", keysyms: [CTRL_KEYSYM, W_KEYSYM] },
-  { label: "Ctrl+T", keysyms: [CTRL_KEYSYM, T_KEYSYM] },
-  { label: "Ctrl+N", keysyms: [CTRL_KEYSYM, N_KEYSYM] },
-  { label: "Ctrl+L", keysyms: [CTRL_KEYSYM, L_KEYSYM] },
-  { label: "Ctrl+Shift+T", keysyms: [CTRL_KEYSYM, SHIFT_KEYSYM, T_KEYSYM] },
-  { label: "Alt+Tab", keysyms: [ALT_KEYSYM, TAB_KEYSYM] },
-  { label: "Alt+F4", keysyms: [ALT_KEYSYM, F4_KEYSYM] },
-  { label: "Ctrl+Alt+Del", keysyms: [CTRL_KEYSYM, ALT_KEYSYM, DEL_KEYSYM] },
-  { label: "F5", keysyms: [F5_KEYSYM] },
-  { label: "F11", keysyms: [F11_KEYSYM] },
-  { label: "Ctrl+Esc", keysyms: [CTRL_KEYSYM, ESC_KEYSYM] },
-  { label: "Win", keysyms: [SUPER_KEYSYM] },
-];
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
 const CLIPBOARD_NOTICE_DURATION_MS = 1800;
 const SESSION_CHECK_TIMEOUT_MS = 10000;
+
+const DESKTOP_BROWSER_BLOCKED_KEYS = [
+  { label: "F5", keysyms: [F5_KEYSYM] },
+  { label: "F11", keysyms: [F11_KEYSYM] },
+  { label: "Ctrl+R", keysyms: [CTRL_KEYSYM, R_KEYSYM] },
+  { label: "Ctrl+W", keysyms: [CTRL_KEYSYM, W_KEYSYM] },
+  { label: "Ctrl+T", keysyms: [CTRL_KEYSYM, T_KEYSYM] },
+  { label: "Alt+F4", keysyms: [ALT_KEYSYM, F4_KEYSYM] },
+] as const;
+
 type AuthState = "checking" | "unauthenticated" | "authenticated";
 
 interface RemoteClipboardPayload {
@@ -162,6 +155,7 @@ export default function App() {
   );
   const [isDisplayFocused, setIsDisplayFocused] = useState(false);
   const [showGestureHelp, setShowGestureHelp] = useState(false);
+  const [softKeyboardOpen, setSoftKeyboardOpen] = useState(false);
   const [viewportState, setViewportState] = useState<ViewportState>(() =>
     getViewportState(),
   );
@@ -816,7 +810,13 @@ export default function App() {
   ]);
 
   const handleShowKeyboard = useCallback(() => {
+    setSoftKeyboardOpen(false);
     hiddenInputRef.current?.focus();
+    setToolbarOpen(false);
+  }, []);
+
+  const handleToggleSoftKeyboard = useCallback(() => {
+    setSoftKeyboardOpen((prev) => !prev);
     setToolbarOpen(false);
   }, []);
 
@@ -919,8 +919,12 @@ export default function App() {
     const minLeft = viewportState.offsetX + FAB_MARGIN;
     const maxLeft =
       viewportState.offsetX +
-      Math.max(FAB_MARGIN, viewportState.width - TOOLBAR_WIDTH - FAB_MARGIN);
-    const desiredLeft = resolvedFabPosition.x + FAB_SIZE - TOOLBAR_WIDTH;
+      Math.max(
+        FAB_MARGIN,
+        viewportState.width - TOOLBAR_RENDERED_WIDTH - FAB_MARGIN,
+      );
+    const desiredLeft =
+      resolvedFabPosition.x + FAB_SIZE - TOOLBAR_RENDERED_WIDTH;
     const left = Math.min(Math.max(desiredLeft, minLeft), maxLeft);
 
     const topBelow = resolvedFabPosition.y + FAB_SIZE + TOOLBAR_GAP;
@@ -957,7 +961,7 @@ export default function App() {
   }, [resolvedFabPosition, viewportState]);
 
   return (
-    <div className="app">
+    <div className={`app ${softKeyboardOpen ? "soft-keyboard-active" : ""}`}>
       <div
         ref={containerRef}
         className="display-container"
@@ -1008,6 +1012,7 @@ export default function App() {
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
                   autoComplete="username"
+                  autoCapitalize="off"
                   disabled={loginLoading}
                 />
                 <label
@@ -1151,7 +1156,7 @@ export default function App() {
                   onChange={handleClipboardInputChange}
                   onFocus={handleClipboardFocus}
                   onClick={handleClipboardClick}
-                  rows={3}
+                  rows={6}
                 />
               )}
             </div>
@@ -1177,19 +1182,24 @@ export default function App() {
                 Copy
               </button>
             </div>
-          </div>
-
-          <div className="toolbar-section toolbar-keys">
-            {KEY_COMBOS.map(({ label, keysyms }) => (
-              <button
-                key={label}
-                type="button"
-                className="btn btn-xs"
-                onClick={() => sendKeyCombo(keysyms)}
-              >
-                {label}
-              </button>
-            ))}
+            <div className="toolbar-browser-shortcuts">
+              <span className="toolbar-browser-shortcuts-label">
+                Special keys
+              </span>
+              <div className="toolbar-browser-shortcuts-keys">
+                {DESKTOP_BROWSER_BLOCKED_KEYS.map((shortcut) => (
+                  <button
+                    key={shortcut.label}
+                    type="button"
+                    className="btn btn-xs"
+                    onClick={() => sendKeyCombo([...shortcut.keysyms])}
+                    title={`Send ${shortcut.label} to remote`}
+                  >
+                    {shortcut.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="toolbar-section toolbar-buttons">
@@ -1199,6 +1209,13 @@ export default function App() {
               onClick={() => setShowGestureHelp(true)}
             >
               ?
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={handleToggleSoftKeyboard}
+            >
+              Soft Keys
             </button>
             {showKeyboardShortcut && (
               <button
@@ -1235,6 +1252,15 @@ export default function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Soft keyboard panel */}
+      {softKeyboardOpen && state === "connected" && (
+        <SoftKeyboardPanel
+          sendKey={sendKey}
+          sendKeyCombo={sendKeyCombo}
+          onClose={() => setSoftKeyboardOpen(false)}
+        />
       )}
 
       {/* Gesture help overlay */}

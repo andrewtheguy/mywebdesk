@@ -13,11 +13,28 @@ const TOOLBAR_RENDERED_WIDTH =
 const TOOLBAR_GAP = 12;
 const TOOLBAR_MIN_HEIGHT = 140;
 const CTRL_KEYSYM = 0xffe3;
+const ALT_KEYSYM = 0xffe9;
 const V_KEYSYM = 0x0076;
+const R_KEYSYM = 0x0072;
+const T_KEYSYM = 0x0074;
+const W_KEYSYM = 0x0077;
+const F4_KEYSYM = 0xffc1;
+const F5_KEYSYM = 0xffc2;
+const F11_KEYSYM = 0xffc8;
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
 const CLIPBOARD_NOTICE_DURATION_MS = 1800;
 const SESSION_CHECK_TIMEOUT_MS = 10000;
+
+const DESKTOP_BROWSER_BLOCKED_KEYS = [
+  { label: "F5", keysyms: [F5_KEYSYM] },
+  { label: "F11", keysyms: [F11_KEYSYM] },
+  { label: "Ctrl+R", keysyms: [CTRL_KEYSYM, R_KEYSYM] },
+  { label: "Ctrl+W", keysyms: [CTRL_KEYSYM, W_KEYSYM] },
+  { label: "Ctrl+T", keysyms: [CTRL_KEYSYM, T_KEYSYM] },
+  { label: "Alt+F4", keysyms: [ALT_KEYSYM, F4_KEYSYM] },
+] as const;
+
 type AuthState = "checking" | "unauthenticated" | "authenticated";
 
 interface RemoteClipboardPayload {
@@ -1163,6 +1180,24 @@ export default function App() {
               >
                 Copy
               </button>
+            </div>
+            <div className="toolbar-browser-shortcuts">
+              <span className="toolbar-browser-shortcuts-label">
+                Special keys
+              </span>
+              <div className="toolbar-browser-shortcuts-keys">
+                {DESKTOP_BROWSER_BLOCKED_KEYS.map((shortcut) => (
+                  <button
+                    key={shortcut.label}
+                    type="button"
+                    className="btn btn-xs"
+                    onClick={() => sendKeyCombo([...shortcut.keysyms])}
+                    title={`Send ${shortcut.label} to remote`}
+                  >
+                    {shortcut.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

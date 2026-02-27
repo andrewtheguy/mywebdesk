@@ -315,6 +315,31 @@
   flex: 1;
 }
 
+.toolbar-browser-shortcuts {
+  display: none;
+}
+
+.toolbar-browser-shortcuts-label {
+  display: block;
+  margin-top: 8px;
+  margin-bottom: 6px;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8f96a5;
+}
+
+.toolbar-browser-shortcuts-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.toolbar-browser-shortcuts-keys .btn {
+  flex: 1 1 calc(50% - 3px);
+  min-width: 0;
+}
+
 .toolbar-keys {
   display: flex;
   flex-wrap: wrap;
@@ -330,6 +355,12 @@
 .toolbar-buttons .btn {
   flex: 1;
   min-width: 0;
+}
+
+@media (min-width: 1000px) {
+  .toolbar-browser-shortcuts {
+    display: block;
+  }
 }
 
 .clipboard-notice {

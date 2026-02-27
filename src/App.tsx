@@ -1015,6 +1015,7 @@ export default function App() {
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
                   autoComplete="username"
+                  autoCapitalize="off"
                   disabled={loginLoading}
                 />
                 <label

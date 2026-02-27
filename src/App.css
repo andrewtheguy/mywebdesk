@@ -451,7 +451,7 @@
 }
 
 .sk-combo-row .sk-button {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   padding: 6px 10px;
   font-size: 0.7rem;
 }
@@ -471,9 +471,8 @@
 }
 
 .sk-fkey-row .sk-button {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 4px;
+  flex: 0 0 auto;
+  padding: 6px 8px;
   font-size: 0.68rem;
 }
 

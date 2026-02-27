@@ -64,6 +64,7 @@ interface SoftKeyButtonProps {
   onPress: (def: SoftKeyDefinition) => void;
   onRelease: (def: SoftKeyDefinition) => void;
   isActive?: boolean;
+  scrollable?: boolean;
 }
 
 function SoftKeyButton({
@@ -72,6 +73,7 @@ function SoftKeyButton({
   onPress,
   onRelease,
   isActive,
+  scrollable,
 }: SoftKeyButtonProps) {
   const repeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const repeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -146,10 +148,14 @@ function SoftKeyButton({
   return (
     <div
       className={`sk-button ${widthClass} ${isActive ? "sk-active" : ""} ${isSingleChar ? "sk-single-char" : ""}`}
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerLeave}
-      onPointerCancel={handlePointerLeave}
+      {...(scrollable
+        ? { onClick: () => onPress(def) }
+        : {
+            onPointerDown: handlePointerDown,
+            onPointerUp: handlePointerUp,
+            onPointerLeave: handlePointerLeave,
+            onPointerCancel: handlePointerLeave,
+          })}
     >
       {label}
       {showShiftHint && (
@@ -253,6 +259,7 @@ export function SoftKeyboardPanel({
             modifiers={modifiers}
             onPress={handleKeyPress}
             onRelease={handleKeyRelease}
+            scrollable
           />
         ))}
       </div>

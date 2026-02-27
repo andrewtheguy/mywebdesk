@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import { SoftKeyboardPanel } from "./SoftKeyboard";
 import { useGuacamole } from "./useGuacamole";
 
 const FAB_SIZE = 48;
@@ -162,6 +163,7 @@ export default function App() {
   );
   const [isDisplayFocused, setIsDisplayFocused] = useState(false);
   const [showGestureHelp, setShowGestureHelp] = useState(false);
+  const [softKeyboardOpen, setSoftKeyboardOpen] = useState(false);
   const [viewportState, setViewportState] = useState<ViewportState>(() =>
     getViewportState(),
   );
@@ -820,6 +822,11 @@ export default function App() {
     setToolbarOpen(false);
   }, []);
 
+  const handleToggleSoftKeyboard = useCallback(() => {
+    setSoftKeyboardOpen((prev) => !prev);
+    setToolbarOpen(false);
+  }, []);
+
   const handleTakeOverSession = useCallback(() => {
     disconnect();
     void (async () => {
@@ -957,7 +964,7 @@ export default function App() {
   }, [resolvedFabPosition, viewportState]);
 
   return (
-    <div className="app">
+    <div className={`app ${softKeyboardOpen ? "soft-keyboard-active" : ""}`}>
       <div
         ref={containerRef}
         className="display-container"
@@ -1200,6 +1207,13 @@ export default function App() {
             >
               ?
             </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={handleToggleSoftKeyboard}
+            >
+              Soft Keys
+            </button>
             {showKeyboardShortcut && (
               <button
                 type="button"
@@ -1235,6 +1249,15 @@ export default function App() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Soft keyboard panel */}
+      {softKeyboardOpen && state === "connected" && (
+        <SoftKeyboardPanel
+          sendKey={sendKey}
+          sendKeyCombo={sendKeyCombo}
+          onClose={() => setSoftKeyboardOpen(false)}
+        />
       )}
 
       {/* Gesture help overlay */}

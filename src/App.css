@@ -157,14 +157,14 @@
   position: fixed;
   top: 16px;
   right: 16px;
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: none;
   background: rgba(74, 158, 255, 0.9);
   color: #fff;
-  font-size: 1.4rem;
-  line-height: 48px;
+  font-size: 1.1rem;
+  line-height: 36px;
   text-align: center;
   z-index: 1000;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -181,10 +181,37 @@
 
 @media (max-width: 799px) {
   .fab {
-    width: 36px;
-    height: 36px;
-    font-size: 1.1rem;
-    line-height: 36px;
+    width: 28px;
+    height: 28px;
+    font-size: 0.9rem;
+    line-height: 28px;
+  }
+}
+
+.fab-combo {
+  width: 80px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  line-height: normal;
+}
+
+.fab-combo-half {
+  flex: 1;
+  text-align: center;
+}
+
+.fab-combo-divider {
+  width: 1px;
+  height: 60%;
+  background: rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+}
+
+@media (max-width: 799px) {
+  .fab-combo {
+    width: 66px;
+    border-radius: 14px;
   }
 }
 

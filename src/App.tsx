@@ -3,7 +3,8 @@ import "./App.css";
 import { SoftKeyboardPanel } from "./SoftKeyboard";
 import { useGuacamole } from "./useGuacamole";
 
-const FAB_SIZE = 48;
+const FAB_SIZE = 36;
+const FAB_COMBO_WIDTH = 80;
 const FAB_MARGIN = 0;
 const DRAG_THRESHOLD = 6;
 const TOOLBAR_CONTENT_WIDTH = 260;
@@ -177,6 +178,10 @@ export default function App() {
     const isAndroid = /Android/i.test(ua);
     return isIOS || isAndroid;
   }, []);
+  const isCoarsePointer = useMemo(
+    () => window.matchMedia("(pointer: coarse)").matches,
+    [],
+  );
 
   // Check auth status on mount.
   useEffect(() => {
@@ -570,13 +575,15 @@ export default function App() {
     };
   }, []);
 
+  const fabWidth = isCoarsePointer ? FAB_COMBO_WIDTH : FAB_SIZE;
+
   const clampFabPosition = useCallback(
     (x: number, y: number): FabPosition => {
       const minX = viewportState.offsetX + FAB_MARGIN;
       const minY = viewportState.offsetY + FAB_MARGIN;
       const maxX =
         viewportState.offsetX +
-        Math.max(FAB_MARGIN, viewportState.width - FAB_SIZE - FAB_MARGIN);
+        Math.max(FAB_MARGIN, viewportState.width - fabWidth - FAB_MARGIN);
       const maxY =
         viewportState.offsetY +
         Math.max(FAB_MARGIN, viewportState.height - FAB_SIZE - FAB_MARGIN);
@@ -586,15 +593,15 @@ export default function App() {
         y: Math.min(Math.max(y, minY), maxY),
       };
     },
-    [viewportState],
+    [viewportState, fabWidth],
   );
 
   const getDefaultFabPosition = useCallback((): FabPosition => {
     return clampFabPosition(
-      viewportState.offsetX + viewportState.width - FAB_SIZE - FAB_MARGIN,
+      viewportState.offsetX + viewportState.width - fabWidth - FAB_MARGIN,
       viewportState.offsetY + FAB_MARGIN,
     );
-  }, [clampFabPosition, viewportState]);
+  }, [clampFabPosition, viewportState, fabWidth]);
 
   const handleFabPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -651,6 +658,14 @@ export default function App() {
 
     fabDragStateRef.current = null;
     setFabDragging(false);
+    if (dragState.dragged) {
+      // On touch devices the browser may not fire a click event after a drag,
+      // leaving suppressFabClickRef stuck. Clear it after a short delay so the
+      // next tap isn't swallowed.
+      setTimeout(() => {
+        suppressFabClickRef.current = false;
+      }, 400);
+    }
   }, []);
 
   const handleFabPointerUp = useCallback(
@@ -667,13 +682,26 @@ export default function App() {
     [endFabDrag],
   );
 
-  const handleFabClick = useCallback(() => {
-    if (suppressFabClickRef.current) {
-      suppressFabClickRef.current = false;
-      return;
-    }
-    toggleToolbar();
-  }, [toggleToolbar]);
+  const handleFabClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (suppressFabClickRef.current) {
+        suppressFabClickRef.current = false;
+        return;
+      }
+      if (isCoarsePointer && !toolbarOpen) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        if (clickX < rect.width / 2) {
+          setSoftKeyboardOpen((prev) => !prev);
+        } else {
+          toggleToolbar();
+        }
+      } else {
+        toggleToolbar();
+      }
+    },
+    [isCoarsePointer, toolbarOpen, toggleToolbar],
+  );
 
   const handleDisplayFocus = useCallback(() => {
     setIsDisplayFocused(true);
@@ -1101,7 +1129,7 @@ export default function App() {
         // biome-ignore lint/a11y/useKeyWithClickEvents: click-only to avoid key interference
         // biome-ignore lint/a11y/noStaticElementInteractions: click-only FAB with drag
         <div
-          className={`fab ${toolbarOpen ? "fab-active" : ""} ${fabDragging ? "fab-dragging" : ""}`}
+          className={`fab ${toolbarOpen ? "fab-active" : ""} ${fabDragging ? "fab-dragging" : ""}${isCoarsePointer && !toolbarOpen ? " fab-combo" : ""}`}
           style={{
             left: `${resolvedFabPosition.x}px`,
             top: `${resolvedFabPosition.y}px`,
@@ -1114,7 +1142,17 @@ export default function App() {
           onPointerUp={handleFabPointerUp}
           onPointerCancel={handleFabPointerCancel}
         >
-          {toolbarOpen ? "\u2715" : "\u2630"}
+          {toolbarOpen ? (
+            "\u2715"
+          ) : isCoarsePointer ? (
+            <>
+              <span className="fab-combo-half">{"\u2328"}</span>
+              <span className="fab-combo-divider" />
+              <span className="fab-combo-half">{"\u2630"}</span>
+            </>
+          ) : (
+            "\u2630"
+          )}
         </div>
       )}
 

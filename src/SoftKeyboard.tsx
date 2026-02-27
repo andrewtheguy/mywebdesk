@@ -7,6 +7,16 @@ import type {
   SpecialSoftKey,
 } from "./softKeyboard";
 import {
+  DESKTOP_ARROW_ROW_1,
+  DESKTOP_ARROW_ROW_2,
+  DESKTOP_FUNCTION_ROW,
+  DESKTOP_HOME_ROW,
+  DESKTOP_NAV_ROW_1,
+  DESKTOP_NAV_ROW_2,
+  DESKTOP_NUMBER_ROW,
+  DESKTOP_QWERTY_ROW,
+  DESKTOP_SPACE_KEY,
+  DESKTOP_ZXCV_ROW,
   FUNCTION_KEY_ROW,
   GUI_COMBO_ROW,
   MODIFIER_KEYSYMS,
@@ -65,6 +75,7 @@ interface SoftKeyButtonProps {
   onRelease: (def: SoftKeyDefinition) => void;
   isActive?: boolean;
   scrollable?: boolean;
+  extraClass?: string;
 }
 
 function SoftKeyButton({
@@ -74,6 +85,7 @@ function SoftKeyButton({
   onRelease,
   isActive,
   scrollable,
+  extraClass,
 }: SoftKeyButtonProps) {
   const repeatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const repeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -147,7 +159,7 @@ function SoftKeyButton({
 
   return (
     <div
-      className={`sk-button ${widthClass} ${isActive ? "sk-active" : ""} ${isSingleChar ? "sk-single-char" : ""}`}
+      className={`sk-button ${widthClass} ${extraClass ?? ""} ${isActive ? "sk-active" : ""} ${isSingleChar ? "sk-single-char" : ""}`}
       {...(scrollable
         ? { onClick: () => onPress(def) }
         : {
@@ -167,6 +179,145 @@ function SoftKeyButton({
   );
 }
 
+// ── Viewport detection ──
+
+function useIsDesktop(breakpoint = 800): boolean {
+  const [desktop, setDesktop] = useState(() => window.innerWidth >= breakpoint);
+  useEffect(() => {
+    const mql = window.matchMedia(`(min-width: ${breakpoint}px)`);
+    const handler = (e: MediaQueryListEvent) => setDesktop(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [breakpoint]);
+  return desktop;
+}
+
+// ── Desktop modifier key definitions ──
+
+const SHIFT_DEF: SpecialSoftKey = {
+  type: "special",
+  label: "Shift",
+  keysym: MODIFIER_KEYSYMS.shift,
+};
+const CTRL_DEF: SpecialSoftKey = {
+  type: "special",
+  label: "Ctrl",
+  keysym: MODIFIER_KEYSYMS.ctrl,
+};
+const ALT_DEF: SpecialSoftKey = {
+  type: "special",
+  label: "Alt",
+  keysym: MODIFIER_KEYSYMS.alt,
+};
+const SUPER_DEF: SpecialSoftKey = {
+  type: "special",
+  label: "Super",
+  keysym: MODIFIER_KEYSYMS.super,
+};
+
+// ── DesktopKeyboardGrid ──
+
+interface DesktopKeyboardGridProps {
+  modifiers: SoftKeyModifiers;
+  onPress: (def: SoftKeyDefinition) => void;
+  onRelease: (def: SoftKeyDefinition) => void;
+}
+
+function DesktopKeyboardGrid({
+  modifiers,
+  onPress,
+  onRelease,
+}: DesktopKeyboardGridProps) {
+  const renderKey = (
+    def: SoftKeyDefinition,
+    extraClass?: string,
+    reactKey?: string,
+  ) => {
+    const mod = isModifierKey(def);
+    return (
+      <SoftKeyButton
+        key={reactKey ?? def.label}
+        def={def}
+        modifiers={modifiers}
+        onPress={onPress}
+        onRelease={onRelease}
+        isActive={mod ? modifiers[mod] : false}
+        extraClass={extraClass}
+      />
+    );
+  };
+
+  return (
+    <div className="sk-desktop-layout">
+      <div className="sk-desktop-main">
+        <div className="sk-desktop-row sk-desktop-row-fn">
+          {DESKTOP_FUNCTION_ROW.map((def) =>
+            renderKey(def, def.label === "Esc" ? "sk-dk-esc" : undefined),
+          )}
+        </div>
+        <div className="sk-desktop-row">
+          {DESKTOP_NUMBER_ROW.map((def) =>
+            renderKey(def, def.label === "Bksp" ? "sk-dk-bksp" : undefined),
+          )}
+        </div>
+        <div className="sk-desktop-row">
+          {DESKTOP_QWERTY_ROW.map((def) =>
+            renderKey(
+              def,
+              def.label === "Tab"
+                ? "sk-dk-tab"
+                : def.label === "\\"
+                  ? "sk-dk-slash"
+                  : undefined,
+            ),
+          )}
+        </div>
+        <div className="sk-desktop-row">
+          <div className="sk-dk-home-spacer" />
+          {DESKTOP_HOME_ROW.map((def) =>
+            renderKey(def, def.label === "Enter" ? "sk-dk-enter" : undefined),
+          )}
+        </div>
+        <div className="sk-desktop-row">
+          {renderKey(SHIFT_DEF, "sk-dk-shift", "Shift_L")}
+          {DESKTOP_ZXCV_ROW.map((def) => renderKey(def))}
+          {renderKey(SHIFT_DEF, "sk-dk-shift", "Shift_R")}
+        </div>
+        <div className="sk-desktop-row">
+          {renderKey(CTRL_DEF, "sk-dk-modifier", "Ctrl_L")}
+          {renderKey(ALT_DEF, "sk-dk-modifier", "Alt_L")}
+          {renderKey(DESKTOP_SPACE_KEY, "sk-dk-space")}
+          {renderKey(SUPER_DEF, "sk-dk-modifier")}
+          {renderKey(ALT_DEF, "sk-dk-modifier", "Alt_R")}
+          {renderKey(CTRL_DEF, "sk-dk-modifier", "Ctrl_R")}
+        </div>
+      </div>
+      <div className="sk-desktop-side">
+        <div className="sk-desktop-side-panel sk-desktop-nav">
+          <div className="sk-desktop-side-row">
+            {DESKTOP_NAV_ROW_1.map((def) => renderKey(def, "sk-dk-side"))}
+          </div>
+          <div className="sk-desktop-side-row">
+            {DESKTOP_NAV_ROW_2.map((def) => renderKey(def, "sk-dk-side"))}
+          </div>
+        </div>
+        <div className="sk-desktop-side-panel sk-desktop-arrows">
+          <div className="sk-desktop-side-row">
+            <div />
+            {renderKey(DESKTOP_ARROW_ROW_1[0], "sk-dk-side sk-dk-arrow")}
+            <div />
+          </div>
+          <div className="sk-desktop-side-row">
+            {DESKTOP_ARROW_ROW_2.map((def) =>
+              renderKey(def, "sk-dk-side sk-dk-arrow"),
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── SoftKeyboardPanel ──
 
 export function SoftKeyboardPanel({
@@ -181,6 +332,7 @@ export function SoftKeyboardPanel({
     super: false,
   });
   const [screen, setScreen] = useState<SoftKeyboardScreen>("primary");
+  const isDesktop = useIsDesktop();
 
   // ── Drag state (desktop floating mode) ──
   const panelRef = useRef<HTMLDivElement>(null);
@@ -335,65 +487,79 @@ export function SoftKeyboardPanel({
         </button>
       </div>
 
-      {/* Top scrollable row */}
-      <div className={screen === "primary" ? "sk-combo-row" : "sk-fkey-row"}>
-        {topRow.map((def) => (
-          <SoftKeyButton
-            key={def.label}
-            def={def}
-            modifiers={modifiers}
-            onPress={handleKeyPress}
-            onRelease={handleKeyRelease}
-            scrollable
-          />
-        ))}
-      </div>
-
-      {/* Main rows */}
-      <div className="sk-grid">
-        {mainRows.map((row, rowIndex) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: stable row order
-          <div key={rowIndex} className="sk-row">
-            {row.map((def) => (
+      {isDesktop ? (
+        <DesktopKeyboardGrid
+          modifiers={modifiers}
+          onPress={handleKeyPress}
+          onRelease={handleKeyRelease}
+        />
+      ) : (
+        <>
+          {/* Top scrollable row */}
+          <div
+            className={screen === "primary" ? "sk-combo-row" : "sk-fkey-row"}
+          >
+            {topRow.map((def) => (
               <SoftKeyButton
                 key={def.label}
                 def={def}
                 modifiers={modifiers}
                 onPress={handleKeyPress}
                 onRelease={handleKeyRelease}
-                isActive={
-                  isModifierKey(def)
-                    ? modifiers[isModifierKey(def) as keyof SoftKeyModifiers]
-                    : false
-                }
+                scrollable
               />
             ))}
           </div>
-        ))}
-      </div>
 
-      {/* Screen toggle + modifier indicators */}
-      <div className="sk-status-row">
-        <button
-          type="button"
-          className="sk-screen-toggle"
-          onClick={() =>
-            setScreen(screen === "primary" ? "secondary" : "primary")
-          }
-        >
-          {screen === "primary" ? "Sym/Nav" : "ABC"}
-        </button>
-        <div className="sk-modifier-indicators">
-          {(Object.keys(modifiers) as (keyof SoftKeyModifiers)[]).map(
-            (mod) =>
-              modifiers[mod] && (
-                <span key={mod} className="sk-modifier-badge">
-                  {MODIFIER_LABELS[mod]}
-                </span>
-              ),
-          )}
-        </div>
-      </div>
+          {/* Main rows */}
+          <div className="sk-grid">
+            {mainRows.map((row, rowIndex) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: stable row order
+              <div key={rowIndex} className="sk-row">
+                {row.map((def) => (
+                  <SoftKeyButton
+                    key={def.label}
+                    def={def}
+                    modifiers={modifiers}
+                    onPress={handleKeyPress}
+                    onRelease={handleKeyRelease}
+                    isActive={
+                      isModifierKey(def)
+                        ? modifiers[
+                            isModifierKey(def) as keyof SoftKeyModifiers
+                          ]
+                        : false
+                    }
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Screen toggle + modifier indicators */}
+          <div className="sk-status-row">
+            <button
+              type="button"
+              className="sk-screen-toggle"
+              onClick={() =>
+                setScreen(screen === "primary" ? "secondary" : "primary")
+              }
+            >
+              {screen === "primary" ? "Sym/Nav" : "ABC"}
+            </button>
+            <div className="sk-modifier-indicators">
+              {(Object.keys(modifiers) as (keyof SoftKeyModifiers)[]).map(
+                (mod) =>
+                  modifiers[mod] && (
+                    <span key={mod} className="sk-modifier-badge">
+                      {MODIFIER_LABELS[mod]}
+                    </span>
+                  ),
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

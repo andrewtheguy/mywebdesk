@@ -249,3 +249,105 @@ export const MODIFIER_KEYSYMS = {
   shift: XK_Shift_L,
   super: XK_Super_L,
 } as const;
+
+// ── Desktop PC keyboard layout ──
+
+export const DESKTOP_FUNCTION_ROW: SoftKeyDefinition[] = [
+  s("Esc", XK_Escape),
+  s("F1", XK_F1),
+  s("F2", XK_F2),
+  s("F3", XK_F3),
+  s("F4", XK_F4),
+  s("F5", XK_F5),
+  s("F6", XK_F6),
+  s("F7", XK_F7),
+  s("F8", XK_F8),
+  s("F9", XK_F9),
+  s("F10", XK_F10),
+  s("F11", XK_F11),
+  s("F12", XK_F12),
+];
+
+export const DESKTOP_NUMBER_ROW: SoftKeyDefinition[] = [
+  p("`", 0x0060, 0x007e, "~"),
+  p("1", 0x0031, 0x0021, "!"),
+  p("2", 0x0032, 0x0040, "@"),
+  p("3", 0x0033, 0x0023, "#"),
+  p("4", 0x0034, 0x0024, "$"),
+  p("5", 0x0035, 0x0025, "%"),
+  p("6", 0x0036, 0x005e, "^"),
+  p("7", 0x0037, 0x0026, "&"),
+  p("8", 0x0038, 0x002a, "*"),
+  p("9", 0x0039, 0x0028, "("),
+  p("0", 0x0030, 0x0029, ")"),
+  p("-", 0x002d, 0x005f, "_"),
+  p("=", 0x003d, 0x002b, "+"),
+  s("Bksp", XK_BackSpace),
+];
+
+export const DESKTOP_QWERTY_ROW: SoftKeyDefinition[] = [
+  s("Tab", XK_Tab),
+  p("q", 0x0071, 0x0051),
+  p("w", 0x0077, 0x0057),
+  p("e", 0x0065, 0x0045),
+  p("r", 0x0072, 0x0052),
+  p("t", 0x0074, 0x0054),
+  p("y", 0x0079, 0x0059),
+  p("u", 0x0075, 0x0055),
+  p("i", 0x0069, 0x0049),
+  p("o", 0x006f, 0x004f),
+  p("p", 0x0070, 0x0050),
+  p("[", 0x005b, 0x007b, "{"),
+  p("]", 0x005d, 0x007d, "}"),
+  p("\\", 0x005c, 0x007c, "|"),
+];
+
+export const DESKTOP_HOME_ROW: SoftKeyDefinition[] = [
+  p("a", 0x0061, 0x0041),
+  p("s", 0x0073, 0x0053),
+  p("d", 0x0064, 0x0044),
+  p("f", 0x0066, 0x0046),
+  p("g", 0x0067, 0x0047),
+  p("h", 0x0068, 0x0048),
+  p("j", 0x006a, 0x004a),
+  p("k", 0x006b, 0x004b),
+  p("l", 0x006c, 0x004c),
+  p(";", 0x003b, 0x003a, ":"),
+  p("'", 0x0027, 0x0022, '"'),
+  s("Enter", XK_Return),
+];
+
+export const DESKTOP_ZXCV_ROW: SoftKeyDefinition[] = [
+  p("z", 0x007a, 0x005a),
+  p("x", 0x0078, 0x0058),
+  p("c", 0x0063, 0x0043),
+  p("v", 0x0076, 0x0056),
+  p("b", 0x0062, 0x0042),
+  p("n", 0x006e, 0x004e),
+  p("m", 0x006d, 0x004d),
+  p(",", 0x002c, 0x003c, "<"),
+  p(".", 0x002e, 0x003e, ">"),
+  p("/", 0x002f, 0x003f, "?"),
+];
+
+export const DESKTOP_SPACE_KEY: SoftKeyDefinition = s("Space", XK_space);
+
+export const DESKTOP_NAV_ROW_1: SoftKeyDefinition[] = [
+  s("Ins", XK_Insert),
+  s("Home", XK_Home),
+  s("PgUp", XK_Page_Up),
+];
+
+export const DESKTOP_NAV_ROW_2: SoftKeyDefinition[] = [
+  s("Del", XK_Delete),
+  s("End", XK_End),
+  s("PgDn", XK_Page_Down),
+];
+
+export const DESKTOP_ARROW_ROW_1: SoftKeyDefinition[] = [s("▲", XK_Up)];
+
+export const DESKTOP_ARROW_ROW_2: SoftKeyDefinition[] = [
+  s("◀", XK_Left),
+  s("▼", XK_Down),
+  s("▶", XK_Right),
+];

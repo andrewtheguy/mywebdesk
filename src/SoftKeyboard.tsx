@@ -557,6 +557,14 @@ export function SoftKeyboardPanel({
                   ),
               )}
             </div>
+            <button
+              type="button"
+              className="sk-mobile-close"
+              aria-label="Close soft keyboard"
+              onClick={onClose}
+            >
+              ✕
+            </button>
           </div>
         </>
       )}

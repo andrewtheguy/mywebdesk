@@ -163,9 +163,8 @@ const ROW_BOTTOM: SoftKeyDefinition[] = [
   s("Tab", XK_Tab, 1.3),
   s("Ctrl", XK_Control_L, 1.3),
   s("Alt", XK_Alt_L, 1.3),
-  s("Super", XK_Super_L),
-  s("Space", XK_space, 2.5),
-  s("Enter", XK_Return, 1.6),
+  s("Space", XK_space, 3),
+  s("Enter", XK_Return, 2),
 ];
 
 export const PRIMARY_SCREEN_ROWS: SoftKeyDefinition[][] = [
@@ -212,9 +211,8 @@ const ROW_NAV_BOTTOM: SoftKeyDefinition[] = [
   s("Tab", XK_Tab, 1.3),
   s("Ctrl", XK_Control_L, 1.3),
   s("Alt", XK_Alt_L, 1.3),
-  s("Super", XK_Super_L),
-  s("Space", XK_space, 2.5),
-  s("Enter", XK_Return, 1.6),
+  s("Space", XK_space, 3),
+  s("Enter", XK_Return, 2),
 ];
 
 export const SECONDARY_SCREEN_ROWS: SoftKeyDefinition[][] = [

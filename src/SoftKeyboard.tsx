@@ -37,7 +37,7 @@ const MODIFIER_LABELS: Record<keyof SoftKeyModifiers, string> = {
 };
 
 // Keys that should toggle sticky modifiers rather than repeat
-const MODIFIER_KEY_LABELS = new Set(["Shift", "Ctrl", "Alt", "Super"]);
+const MODIFIER_KEY_LABELS = new Set(["Shift", "Ctrl", "Alt"]);
 
 // ── Props ──
 

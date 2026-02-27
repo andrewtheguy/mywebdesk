@@ -239,6 +239,18 @@
   resize: vertical;
 }
 
+@media (min-height: 800px) {
+  .clipboard-input {
+    min-height: 12rem;
+  }
+}
+
+@media (min-height: 1100px) {
+  .clipboard-input {
+    min-height: 20rem;
+  }
+}
+
 .clipboard-input:focus {
   outline: none;
   border-color: #4a9eff;

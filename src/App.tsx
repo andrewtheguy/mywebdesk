@@ -810,6 +810,7 @@ export default function App() {
   ]);
 
   const handleShowKeyboard = useCallback(() => {
+    setSoftKeyboardOpen(false);
     hiddenInputRef.current?.focus();
     setToolbarOpen(false);
   }, []);

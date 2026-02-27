@@ -3,7 +3,7 @@ import "./App.css";
 import { SoftKeyboardPanel } from "./SoftKeyboard";
 import { useGuacamole } from "./useGuacamole";
 
-const FAB_SIZE = 48;
+const FAB_SIZE = 36;
 const FAB_MARGIN = 0;
 const DRAG_THRESHOLD = 6;
 const TOOLBAR_CONTENT_WIDTH = 260;

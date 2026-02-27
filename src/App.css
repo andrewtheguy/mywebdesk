@@ -157,14 +157,14 @@
   position: fixed;
   top: 16px;
   right: 16px;
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   border: none;
   background: rgba(74, 158, 255, 0.9);
   color: #fff;
-  font-size: 1.4rem;
-  line-height: 48px;
+  font-size: 1.1rem;
+  line-height: 36px;
   text-align: center;
   z-index: 1000;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);

@@ -181,10 +181,10 @@
 
 @media (max-width: 799px) {
   .fab {
-    width: 36px;
-    height: 36px;
-    font-size: 1.1rem;
-    line-height: 36px;
+    width: 28px;
+    height: 28px;
+    font-size: 0.9rem;
+    line-height: 28px;
   }
 }
 

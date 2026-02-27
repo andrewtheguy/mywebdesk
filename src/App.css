@@ -188,6 +188,33 @@
   }
 }
 
+.fab-combo {
+  width: 80px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  line-height: normal;
+}
+
+.fab-combo-half {
+  flex: 1;
+  text-align: center;
+}
+
+.fab-combo-divider {
+  width: 1px;
+  height: 60%;
+  background: rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+}
+
+@media (max-width: 799px) {
+  .fab-combo {
+    width: 66px;
+    border-radius: 14px;
+  }
+}
+
 .fab-dragging {
   cursor: grabbing;
 }

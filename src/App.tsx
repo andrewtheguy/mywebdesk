@@ -13,6 +13,7 @@ const TOOLBAR_RENDERED_WIDTH =
   TOOLBAR_CONTENT_WIDTH + TOOLBAR_HORIZONTAL_PADDING * 2;
 const TOOLBAR_GAP = 12;
 const TOOLBAR_MIN_HEIGHT = 140;
+const SOFT_KEYBOARD_HEIGHT = 280;
 const CTRL_KEYSYM = 0xffe3;
 const ALT_KEYSYM = 0xffe9;
 const V_KEYSYM = 0x0076;
@@ -584,16 +585,20 @@ export default function App() {
       const maxX =
         viewportState.offsetX +
         Math.max(FAB_MARGIN, viewportState.width - fabWidth - FAB_MARGIN);
+      const bottomInset = softKeyboardOpen ? SOFT_KEYBOARD_HEIGHT : 0;
       const maxY =
         viewportState.offsetY +
-        Math.max(FAB_MARGIN, viewportState.height - FAB_SIZE - FAB_MARGIN);
+        Math.max(
+          FAB_MARGIN,
+          viewportState.height - FAB_SIZE - FAB_MARGIN - bottomInset,
+        );
 
       return {
         x: Math.min(Math.max(x, minX), maxX),
         y: Math.min(Math.max(y, minY), maxY),
       };
     },
-    [viewportState, fabWidth],
+    [viewportState, fabWidth, softKeyboardOpen],
   );
 
   const getDefaultFabPosition = useCallback((): FabPosition => {

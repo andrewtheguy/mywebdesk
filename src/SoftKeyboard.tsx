@@ -182,6 +182,64 @@ export function SoftKeyboardPanel({
   });
   const [screen, setScreen] = useState<SoftKeyboardScreen>("primary");
 
+  // ── Drag state (desktop floating mode) ──
+  const panelRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+  const [dragPosition, setDragPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  const handleDragStart = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const panel = panelRef.current;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    setDragPosition({ left: rect.left, top: rect.top });
+    dragRef.current = {
+      pointerId: e.pointerId,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+    };
+  }, []);
+
+  useEffect(() => {
+    const handlePointerMove = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      e.preventDefault();
+      const left = Math.max(
+        0,
+        Math.min(e.clientX - drag.offsetX, window.innerWidth - 100),
+      );
+      const top = Math.max(
+        0,
+        Math.min(e.clientY - drag.offsetY, window.innerHeight - 100),
+      );
+      setDragPosition({ left, top });
+    };
+    const stopDrag = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      dragRef.current = null;
+    };
+    window.addEventListener("pointermove", handlePointerMove, {
+      passive: false,
+    });
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", stopDrag);
+      window.removeEventListener("pointercancel", stopDrag);
+    };
+  }, []);
+
   const fireKeyWithModifiers = useCallback(
     (keysym: number) => {
       const activeModKeysyms: number[] = [];
@@ -243,12 +301,39 @@ export function SoftKeyboardPanel({
   const mainRows =
     screen === "primary" ? PRIMARY_SCREEN_ROWS : SECONDARY_SCREEN_ROWS;
 
+  const panelStyle = dragPosition
+    ? {
+        left: `${dragPosition.left}px`,
+        top: `${dragPosition.top}px`,
+        right: "auto",
+        bottom: "auto",
+      }
+    : undefined;
+
   return (
-    <div className="sk-panel">
-      {/* Close button */}
-      <button type="button" className="sk-close" onClick={onClose}>
-        ✕
-      </button>
+    <div className="sk-panel" ref={panelRef} style={panelStyle}>
+      {/* Desktop drag bar + close */}
+      <div className="sk-toolbar">
+        <div className="sk-toolbar-spacer" />
+        <button
+          type="button"
+          className="sk-drag-handle"
+          aria-label="Drag soft keyboard"
+          onPointerDown={handleDragStart}
+        >
+          ⠿
+        </button>
+        <button
+          type="button"
+          className="sk-toolbar-close"
+          aria-label="Close soft keyboard"
+          onClick={() => {
+            if (!dragRef.current) onClose();
+          }}
+        >
+          ✕
+        </button>
+      </div>
 
       {/* Top scrollable row */}
       <div className={screen === "primary" ? "sk-combo-row" : "sk-fkey-row"}>

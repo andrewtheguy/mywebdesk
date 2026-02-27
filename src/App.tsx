@@ -4,9 +4,12 @@ import { SoftKeyboardPanel } from "./SoftKeyboard";
 import { useGuacamole } from "./useGuacamole";
 
 const FAB_SIZE = 48;
-const FAB_MARGIN = 16;
+const FAB_MARGIN = 0;
 const DRAG_THRESHOLD = 6;
-const TOOLBAR_WIDTH = 260;
+const TOOLBAR_CONTENT_WIDTH = 260;
+const TOOLBAR_HORIZONTAL_PADDING = 16;
+const TOOLBAR_RENDERED_WIDTH =
+  TOOLBAR_CONTENT_WIDTH + TOOLBAR_HORIZONTAL_PADDING * 2;
 const TOOLBAR_GAP = 12;
 const TOOLBAR_MIN_HEIGHT = 140;
 const CTRL_KEYSYM = 0xffe3;
@@ -898,8 +901,12 @@ export default function App() {
     const minLeft = viewportState.offsetX + FAB_MARGIN;
     const maxLeft =
       viewportState.offsetX +
-      Math.max(FAB_MARGIN, viewportState.width - TOOLBAR_WIDTH - FAB_MARGIN);
-    const desiredLeft = resolvedFabPosition.x + FAB_SIZE - TOOLBAR_WIDTH;
+      Math.max(
+        FAB_MARGIN,
+        viewportState.width - TOOLBAR_RENDERED_WIDTH - FAB_MARGIN,
+      );
+    const desiredLeft =
+      resolvedFabPosition.x + FAB_SIZE - TOOLBAR_RENDERED_WIDTH;
     const left = Math.min(Math.max(desiredLeft, minLeft), maxLeft);
 
     const topBelow = resolvedFabPosition.y + FAB_SIZE + TOOLBAR_GAP;

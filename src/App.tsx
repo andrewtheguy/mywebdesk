@@ -16,6 +16,8 @@ const TOOLBAR_MIN_HEIGHT = 140;
 const SOFT_KEYBOARD_HEIGHT = 280;
 const CTRL_KEYSYM = 0xffe3;
 const ALT_KEYSYM = 0xffe9;
+const SHIFT_KEYSYM = 0xffe1;
+const SUPER_KEYSYM = 0xffeb;
 const V_KEYSYM = 0x0076;
 const R_KEYSYM = 0x0072;
 const T_KEYSYM = 0x0074;
@@ -35,6 +37,13 @@ const DESKTOP_BROWSER_BLOCKED_KEYS = [
   { label: "Ctrl+W", keysyms: [CTRL_KEYSYM, W_KEYSYM] },
   { label: "Ctrl+T", keysyms: [CTRL_KEYSYM, T_KEYSYM] },
   { label: "Alt+F4", keysyms: [ALT_KEYSYM, F4_KEYSYM] },
+] as const;
+
+const MODIFIER_TAP_KEYS = [
+  { label: "Ctrl", keysyms: [CTRL_KEYSYM] },
+  { label: "Alt", keysyms: [ALT_KEYSYM] },
+  { label: "Shift", keysyms: [SHIFT_KEYSYM] },
+  { label: "Super", keysyms: [SUPER_KEYSYM] },
 ] as const;
 
 type AuthState = "checking" | "unauthenticated" | "authenticated";
@@ -1239,6 +1248,24 @@ export default function App() {
                     title={`Send ${shortcut.label} to remote`}
                   >
                     {shortcut.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="toolbar-modifier-tap">
+              <span className="toolbar-browser-shortcuts-label">
+                Modifier tap
+              </span>
+              <div className="toolbar-browser-shortcuts-keys">
+                {MODIFIER_TAP_KEYS.map((mod) => (
+                  <button
+                    key={mod.label}
+                    type="button"
+                    className="btn btn-xs"
+                    onClick={() => sendKeyCombo([...mod.keysyms])}
+                    title={`Tap ${mod.label}`}
+                  >
+                    {mod.label}
                   </button>
                 ))}
               </div>

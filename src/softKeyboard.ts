@@ -32,6 +32,7 @@ export interface SoftKeyModifiers {
   ctrl: boolean;
   alt: boolean;
   shift: boolean;
+  super: boolean;
 }
 
 export type SoftKeyboardScreen = "primary" | "secondary";
@@ -97,7 +98,7 @@ export const GUI_COMBO_ROW: SoftKeyDefinition[] = [
   c("Alt+Tab", [XK_Alt_L, XK_Tab]),
   c("Alt+F4", [XK_Alt_L, XK_F4]),
   c("C+A+Del", [XK_Control_L, XK_Alt_L, XK_Delete]),
-  s("Win", XK_Super_L),
+  s("Super", XK_Super_L),
   c("Ctrl+Esc", [XK_Control_L, XK_Escape]),
   c("Ctrl+Z", [XK_Control_L, 0x007a]),
   c("Ctrl+C", [XK_Control_L, 0x0063]),
@@ -238,6 +239,7 @@ export const MODIFIER_KEYSYMS = {
   ctrl: XK_Control_L,
   alt: XK_Alt_L,
   shift: XK_Shift_L,
+  super: XK_Super_L,
 } as const;
 
 // ── Desktop PC keyboard layout ──

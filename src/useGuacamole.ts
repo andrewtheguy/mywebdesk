@@ -279,6 +279,7 @@ export function useGuacamole(
       let cursorPosition = { x: 0, y: 0 };
       let hasCursorPosition = false;
       let nativeDisplaySize: { width: number; height: number } | null = null;
+      let nativeDisplayDprFloor: number | null = null;
       let lastRequestedSize = { width: 0, height: 0 };
       let pendingResizeTarget: { width: number; height: number } | null = null;
       let pendingResizeRetries = 0;
@@ -1306,7 +1307,10 @@ export function useGuacamole(
           1,
           Math.round((vp ? vp.height : window.innerHeight) * dpr),
         );
-        if (nativeDisplaySize) {
+        if (
+          nativeDisplaySize &&
+          (nativeDisplayDprFloor == null || dpr >= nativeDisplayDprFloor)
+        ) {
           w = Math.max(nativeDisplaySize.width, w);
           h = Math.max(nativeDisplaySize.height, h);
         }
@@ -1364,6 +1368,19 @@ export function useGuacamole(
       display.onresize = (width: number, height: number) => {
         if (!nativeDisplaySize) {
           nativeDisplaySize = { width, height };
+          nativeDisplayDprFloor = window.devicePixelRatio || 1;
+        } else if (
+          width < nativeDisplaySize.width ||
+          height < nativeDisplaySize.height
+        ) {
+          nativeDisplaySize = {
+            width: Math.min(nativeDisplaySize.width, width),
+            height: Math.min(nativeDisplaySize.height, height),
+          };
+          nativeDisplayDprFloor = Math.min(
+            nativeDisplayDprFloor ?? Number.POSITIVE_INFINITY,
+            window.devicePixelRatio || 1,
+          );
         }
         if (
           pendingResizeTarget &&

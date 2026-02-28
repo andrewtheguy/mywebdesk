@@ -1374,19 +1374,17 @@ export function useGuacamole(
             nativeDisplayDprFloor = window.devicePixelRatio || 1;
           }
         } else if (
-          width < nativeDisplaySize.width ||
-          height < nativeDisplaySize.height
+          useHiDpiSessionSizing &&
+          (width < nativeDisplaySize.width || height < nativeDisplaySize.height)
         ) {
           nativeDisplaySize = {
             width: Math.min(nativeDisplaySize.width, width),
             height: Math.min(nativeDisplaySize.height, height),
           };
-          if (useHiDpiSessionSizing) {
-            nativeDisplayDprFloor = Math.min(
-              nativeDisplayDprFloor ?? Number.POSITIVE_INFINITY,
-              window.devicePixelRatio || 1,
-            );
-          }
+          nativeDisplayDprFloor = Math.min(
+            nativeDisplayDprFloor ?? Number.POSITIVE_INFINITY,
+            window.devicePixelRatio || 1,
+          );
         }
         if (
           pendingResizeTarget &&

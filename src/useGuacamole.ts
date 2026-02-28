@@ -1291,13 +1291,21 @@ export function useGuacamole(
         e.preventDefault();
       }
 
-      // Resize to the actual viewport/container size, min-clamped to native VNC resolution.
+      // Resize to the actual viewport/container size (in device pixels for HiDPI),
+      // min-clamped to native VNC resolution.
       function doResize() {
         if (!canSendResize) return;
 
         const vp = window.visualViewport;
-        let w = Math.max(1, Math.round(vp ? vp.width : window.innerWidth));
-        let h = Math.max(1, Math.round(vp ? vp.height : window.innerHeight));
+        const dpr = window.devicePixelRatio || 1;
+        let w = Math.max(
+          1,
+          Math.round((vp ? vp.width : window.innerWidth) * dpr),
+        );
+        let h = Math.max(
+          1,
+          Math.round((vp ? vp.height : window.innerHeight) * dpr),
+        );
         if (nativeDisplaySize) {
           w = Math.max(nativeDisplaySize.width, w);
           h = Math.max(nativeDisplaySize.height, h);
@@ -1384,14 +1392,26 @@ export function useGuacamole(
       params.set("RESIZE_METHOD", "display-update");
       if (options?.sessionId) params.set("SESSION_ID", options.sessionId);
       const vp = window.visualViewport;
+      const initialDpr = window.devicePixelRatio || 1;
       params.set(
         "WIDTH",
-        String(Math.max(1, Math.round(vp ? vp.width : window.innerWidth))),
+        String(
+          Math.max(
+            1,
+            Math.round((vp ? vp.width : window.innerWidth) * initialDpr),
+          ),
+        ),
       );
       params.set(
         "HEIGHT",
-        String(Math.max(1, Math.round(vp ? vp.height : window.innerHeight))),
+        String(
+          Math.max(
+            1,
+            Math.round((vp ? vp.height : window.innerHeight) * initialDpr),
+          ),
+        ),
       );
+      params.set("DPI", String(Math.round(96 * initialDpr)));
 
       client.connect(params.toString());
 

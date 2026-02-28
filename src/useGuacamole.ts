@@ -157,6 +157,8 @@ export function useGuacamole(
       const client = new Guacamole.Client(tunnel);
       clientRef.current = client;
       let canSendResize = false;
+      const canPinchZoom = (navigator.maxTouchPoints || 0) >= 2;
+      const useHiDpiSessionSizing = !canPinchZoom;
 
       tunnel.onerror = (status: Guacamole.Status) => {
         if (
@@ -1298,7 +1300,7 @@ export function useGuacamole(
         if (!canSendResize) return;
 
         const vp = window.visualViewport;
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = useHiDpiSessionSizing ? window.devicePixelRatio || 1 : 1;
         let w = Math.max(
           1,
           Math.round((vp ? vp.width : window.innerWidth) * dpr),
@@ -1368,7 +1370,9 @@ export function useGuacamole(
       display.onresize = (width: number, height: number) => {
         if (!nativeDisplaySize) {
           nativeDisplaySize = { width, height };
-          nativeDisplayDprFloor = window.devicePixelRatio || 1;
+          if (useHiDpiSessionSizing) {
+            nativeDisplayDprFloor = window.devicePixelRatio || 1;
+          }
         } else if (
           width < nativeDisplaySize.width ||
           height < nativeDisplaySize.height
@@ -1377,10 +1381,12 @@ export function useGuacamole(
             width: Math.min(nativeDisplaySize.width, width),
             height: Math.min(nativeDisplaySize.height, height),
           };
-          nativeDisplayDprFloor = Math.min(
-            nativeDisplayDprFloor ?? Number.POSITIVE_INFINITY,
-            window.devicePixelRatio || 1,
-          );
+          if (useHiDpiSessionSizing) {
+            nativeDisplayDprFloor = Math.min(
+              nativeDisplayDprFloor ?? Number.POSITIVE_INFINITY,
+              window.devicePixelRatio || 1,
+            );
+          }
         }
         if (
           pendingResizeTarget &&
@@ -1409,7 +1415,9 @@ export function useGuacamole(
       params.set("RESIZE_METHOD", "display-update");
       if (options?.sessionId) params.set("SESSION_ID", options.sessionId);
       const vp = window.visualViewport;
-      const initialDpr = window.devicePixelRatio || 1;
+      const initialDpr = useHiDpiSessionSizing
+        ? window.devicePixelRatio || 1
+        : 1;
       params.set(
         "WIDTH",
         String(

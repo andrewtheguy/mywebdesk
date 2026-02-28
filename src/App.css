@@ -356,6 +356,17 @@
   color: #8f96a5;
 }
 
+.toolbar-modifier-tap {
+  display: block;
+  margin-top: 8px;
+}
+
+@media (max-width: 799px) {
+  .toolbar-browser-shortcuts-label {
+    display: none;
+  }
+}
+
 .toolbar-browser-shortcuts-keys {
   display: flex;
   flex-wrap: wrap;

@@ -1,5 +1,6 @@
 import Guacamole from "guacamole-common-js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { computeResizeTarget, updateNativeDisplayFloor } from "./resizeSizing";
 
 interface Config {
   vncHost: string;
@@ -1301,21 +1302,13 @@ export function useGuacamole(
 
         const vp = window.visualViewport;
         const dpr = useHiDpiSessionSizing ? window.devicePixelRatio || 1 : 1;
-        let w = Math.max(
-          1,
-          Math.round((vp ? vp.width : window.innerWidth) * dpr),
-        );
-        let h = Math.max(
-          1,
-          Math.round((vp ? vp.height : window.innerHeight) * dpr),
-        );
-        if (
-          nativeDisplaySize &&
-          (nativeDisplayDprFloor == null || dpr >= nativeDisplayDprFloor)
-        ) {
-          w = Math.max(nativeDisplaySize.width, w);
-          h = Math.max(nativeDisplaySize.height, h);
-        }
+        const { width: w, height: h } = computeResizeTarget({
+          viewportWidth: vp ? vp.width : window.innerWidth,
+          viewportHeight: vp ? vp.height : window.innerHeight,
+          dpr,
+          nativeDisplaySize,
+          nativeDisplayDprFloor,
+        });
 
         if (lastRequestedSize.width === w && lastRequestedSize.height === h) {
           return;
@@ -1368,24 +1361,16 @@ export function useGuacamole(
 
       // Apply base fit scale and any active pinch zoom/pan.
       display.onresize = (width: number, height: number) => {
-        if (!nativeDisplaySize) {
-          nativeDisplaySize = { width, height };
-          if (useHiDpiSessionSizing) {
-            nativeDisplayDprFloor = window.devicePixelRatio || 1;
-          }
-        } else if (
-          useHiDpiSessionSizing &&
-          (width < nativeDisplaySize.width || height < nativeDisplaySize.height)
-        ) {
-          nativeDisplaySize = {
-            width: Math.min(nativeDisplaySize.width, width),
-            height: Math.min(nativeDisplaySize.height, height),
-          };
-          nativeDisplayDprFloor = Math.min(
-            nativeDisplayDprFloor ?? Number.POSITIVE_INFINITY,
-            window.devicePixelRatio || 1,
-          );
-        }
+        const nextNativeFloor = updateNativeDisplayFloor({
+          currentNativeDisplaySize: nativeDisplaySize,
+          currentNativeDisplayDprFloor: nativeDisplayDprFloor,
+          nextWidth: width,
+          nextHeight: height,
+          currentDpr: window.devicePixelRatio || 1,
+          useHiDpiSessionSizing,
+        });
+        nativeDisplaySize = nextNativeFloor.nativeDisplaySize;
+        nativeDisplayDprFloor = nextNativeFloor.nativeDisplayDprFloor;
         if (
           pendingResizeTarget &&
           width === pendingResizeTarget.width &&

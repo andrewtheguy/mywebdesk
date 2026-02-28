@@ -1,5 +1,6 @@
 import Guacamole from "guacamole-common-js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { computeResizeTarget, updateNativeDisplayFloor } from "./resizeSizing";
 
 interface Config {
   vncHost: string;
@@ -157,6 +158,8 @@ export function useGuacamole(
       const client = new Guacamole.Client(tunnel);
       clientRef.current = client;
       let canSendResize = false;
+      const canPinchZoom = (navigator.maxTouchPoints || 0) >= 2;
+      const useHiDpiSessionSizing = !canPinchZoom;
 
       tunnel.onerror = (status: Guacamole.Status) => {
         if (
@@ -279,6 +282,7 @@ export function useGuacamole(
       let cursorPosition = { x: 0, y: 0 };
       let hasCursorPosition = false;
       let nativeDisplaySize: { width: number; height: number } | null = null;
+      let nativeDisplayDprFloor: number | null = null;
       let lastRequestedSize = { width: 0, height: 0 };
       let pendingResizeTarget: { width: number; height: number } | null = null;
       let pendingResizeRetries = 0;
@@ -1291,17 +1295,20 @@ export function useGuacamole(
         e.preventDefault();
       }
 
-      // Resize to the actual viewport/container size, min-clamped to native VNC resolution.
+      // Resize to the actual viewport/container size (in device pixels for HiDPI),
+      // min-clamped to native VNC resolution.
       function doResize() {
         if (!canSendResize) return;
 
         const vp = window.visualViewport;
-        let w = Math.max(1, Math.round(vp ? vp.width : window.innerWidth));
-        let h = Math.max(1, Math.round(vp ? vp.height : window.innerHeight));
-        if (nativeDisplaySize) {
-          w = Math.max(nativeDisplaySize.width, w);
-          h = Math.max(nativeDisplaySize.height, h);
-        }
+        const dpr = useHiDpiSessionSizing ? window.devicePixelRatio || 1 : 1;
+        const { width: w, height: h } = computeResizeTarget({
+          viewportWidth: vp ? vp.width : window.innerWidth,
+          viewportHeight: vp ? vp.height : window.innerHeight,
+          dpr,
+          nativeDisplaySize,
+          nativeDisplayDprFloor,
+        });
 
         if (lastRequestedSize.width === w && lastRequestedSize.height === h) {
           return;
@@ -1354,9 +1361,16 @@ export function useGuacamole(
 
       // Apply base fit scale and any active pinch zoom/pan.
       display.onresize = (width: number, height: number) => {
-        if (!nativeDisplaySize) {
-          nativeDisplaySize = { width, height };
-        }
+        const nextNativeFloor = updateNativeDisplayFloor({
+          currentNativeDisplaySize: nativeDisplaySize,
+          currentNativeDisplayDprFloor: nativeDisplayDprFloor,
+          nextWidth: width,
+          nextHeight: height,
+          currentDpr: window.devicePixelRatio || 1,
+          useHiDpiSessionSizing,
+        });
+        nativeDisplaySize = nextNativeFloor.nativeDisplaySize;
+        nativeDisplayDprFloor = nextNativeFloor.nativeDisplayDprFloor;
         if (
           pendingResizeTarget &&
           width === pendingResizeTarget.width &&
@@ -1384,14 +1398,28 @@ export function useGuacamole(
       params.set("RESIZE_METHOD", "display-update");
       if (options?.sessionId) params.set("SESSION_ID", options.sessionId);
       const vp = window.visualViewport;
+      const initialDpr = useHiDpiSessionSizing
+        ? window.devicePixelRatio || 1
+        : 1;
       params.set(
         "WIDTH",
-        String(Math.max(1, Math.round(vp ? vp.width : window.innerWidth))),
+        String(
+          Math.max(
+            1,
+            Math.round((vp ? vp.width : window.innerWidth) * initialDpr),
+          ),
+        ),
       );
       params.set(
         "HEIGHT",
-        String(Math.max(1, Math.round(vp ? vp.height : window.innerHeight))),
+        String(
+          Math.max(
+            1,
+            Math.round((vp ? vp.height : window.innerHeight) * initialDpr),
+          ),
+        ),
       );
+      params.set("DPI", String(Math.round(96 * initialDpr)));
 
       client.connect(params.toString());
 

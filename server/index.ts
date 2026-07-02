@@ -28,8 +28,11 @@ const HOST = process.env.HOST || "127.0.0.1";
 
 const GUACD_HOST = process.env.GUACD_HOST || "127.0.0.1";
 const GUACD_PORT = Number.parseInt(process.env.GUACD_PORT || "14822", 10);
+const REMOTE_PROTOCOL = process.env.REMOTE_PROTOCOL === "rdp" ? "rdp" : "vnc";
 const VNC_HOST = process.env.VNC_HOST || "127.0.0.1";
 const VNC_PORT = process.env.VNC_PORT || "5901";
+const RDP_HOST = process.env.RDP_HOST || "127.0.0.1";
+const RDP_PORT = process.env.RDP_PORT || "3389";
 
 const COOKIE_FLAGS = "HttpOnly; SameSite=Strict; Path=/; Secure";
 
@@ -87,8 +90,9 @@ app.use("/api/app", (req, res, next) => {
 
 app.get("/api/app/config", (_req, res) => {
   res.json({
-    vncHost: VNC_HOST,
-    vncPort: VNC_PORT,
+    protocol: REMOTE_PROTOCOL,
+    host: REMOTE_PROTOCOL === "rdp" ? RDP_HOST : VNC_HOST,
+    port: REMOTE_PROTOCOL === "rdp" ? RDP_PORT : VNC_PORT,
   });
 });
 

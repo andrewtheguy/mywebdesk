@@ -1,11 +1,10 @@
 import Guacamole from "guacamole-common-js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ConnectionConfig,
+  parseConnectionConfig,
+} from "./connectionConfig";
 import { computeResizeTarget, updateNativeDisplayFloor } from "./resizeSizing";
-
-interface Config {
-  vncHost: string;
-  vncPort: string;
-}
 
 interface ConnectOptions {
   sessionId?: string;
@@ -129,7 +128,7 @@ export function useGuacamole(
       setError(null);
 
       // Fetch config from server
-      let config: Config;
+      let config: ConnectionConfig;
       try {
         const res = await fetch("/api/app/config");
         if (!res.ok) {
@@ -143,10 +142,14 @@ export function useGuacamole(
           setState("error");
           return;
         }
-        config = await res.json();
-      } catch {
+        config = parseConnectionConfig(await res.json());
+      } catch (err) {
         if (connectionId !== connectionIdRef.current) return;
-        setError("Failed to fetch config");
+        setError(
+          err instanceof Error && err.message.startsWith("Invalid config")
+            ? err.message
+            : "Failed to fetch config",
+        );
         setState("error");
         return;
       }
@@ -1392,10 +1395,15 @@ export function useGuacamole(
       // Build connection string
       const params = new URLSearchParams();
       params.set("VERSION", "VERSION_1_5_0");
-      params.set("TYPE", "vnc");
-      params.set("HOSTNAME", config.vncHost);
-      params.set("PORT", config.vncPort);
+      params.set("TYPE", config.protocol);
+      params.set("HOSTNAME", config.host);
+      params.set("PORT", config.port);
       params.set("RESIZE_METHOD", "display-update");
+      if (config.protocol === "rdp") {
+        params.set("SECURITY", "any");
+        params.set("IGNORE_CERT", "true");
+        params.set("ENABLE_WALLPAPER", "true");
+      }
       if (options?.sessionId) params.set("SESSION_ID", options.sessionId);
       const vp = window.visualViewport;
       const initialDpr = useHiDpiSessionSizing

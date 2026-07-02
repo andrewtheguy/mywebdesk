@@ -264,12 +264,23 @@ export function attachGuacProxy(
     }
 
     queryByNormalizedName.delete("password");
-    const vncPassword = process.env.VNC_PASSWORD || "";
-    if (vncPassword) {
-      queryByNormalizedName.set("password", vncPassword);
-    }
-
+    queryByNormalizedName.delete("username");
     const connectionType = queryByNormalizedName.get("type") || "vnc";
+    if (connectionType === "rdp") {
+      const rdpUsername = process.env.RDP_USERNAME || "";
+      const rdpPassword = process.env.RDP_PASSWORD || "";
+      if (rdpUsername) {
+        queryByNormalizedName.set("username", rdpUsername);
+      }
+      if (rdpPassword) {
+        queryByNormalizedName.set("password", rdpPassword);
+      }
+    } else {
+      const vncPassword = process.env.VNC_PASSWORD || "";
+      if (vncPassword) {
+        queryByNormalizedName.set("password", vncPassword);
+      }
+    }
     const width = queryByNormalizedName.get("width") || "";
     const height = queryByNormalizedName.get("height") || "";
     const dpi = queryByNormalizedName.get("dpi") || DEFAULT_DPI;

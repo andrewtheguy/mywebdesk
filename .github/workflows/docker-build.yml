@@ -1,8 +1,8 @@
-name: Build Docker Image
+name: Build Docker Image (ad-hoc)
 
+# Ad-hoc image builds that are NOT tied to a release. Versioned releases go through
+# release.yml (which reads the version from package.json and cuts a GitHub release).
 on:
-  release:
-    types: [created]
   workflow_dispatch:
     inputs:
       tag:
@@ -16,7 +16,6 @@ env:
 
 jobs:
   meta:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
@@ -24,9 +23,7 @@ jobs:
       - name: Determine tag
         id: tag
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          elif [ -n "${{ inputs.tag }}" ]; then
+          if [ -n "${{ inputs.tag }}" ]; then
             echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
           else
             echo "tag=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
@@ -70,7 +67,6 @@ jobs:
           platforms: ${{ matrix.platform }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.tag }}-${{ matrix.arch }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-${{ matrix.arch }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -94,11 +90,3 @@ jobs:
             -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.tag }} \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.tag }}-amd64 \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.meta.outputs.tag }}-arm64
-
-      - name: Update latest multi-arch manifest
-        if: github.event_name == 'release'
-        run: |
-          docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64

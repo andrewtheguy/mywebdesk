@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { computeResizeTarget, updateNativeDisplayFloor } from "./resizeSizing";
 
 interface Config {
-  vncHost: string;
-  vncPort: string;
+  protocol: "vnc" | "rdp";
+  host: string;
+  port: string;
 }
 
 interface ConnectOptions {
@@ -1392,10 +1393,15 @@ export function useGuacamole(
       // Build connection string
       const params = new URLSearchParams();
       params.set("VERSION", "VERSION_1_5_0");
-      params.set("TYPE", "vnc");
-      params.set("HOSTNAME", config.vncHost);
-      params.set("PORT", config.vncPort);
+      params.set("TYPE", config.protocol === "rdp" ? "rdp" : "vnc");
+      params.set("HOSTNAME", config.host);
+      params.set("PORT", config.port);
       params.set("RESIZE_METHOD", "display-update");
+      if (config.protocol === "rdp") {
+        params.set("SECURITY", "any");
+        params.set("IGNORE_CERT", "true");
+        params.set("ENABLE_WALLPAPER", "true");
+      }
       if (options?.sessionId) params.set("SESSION_ID", options.sessionId);
       const vp = window.visualViewport;
       const initialDpr = useHiDpiSessionSizing

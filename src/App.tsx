@@ -93,8 +93,9 @@ interface FabDragState {
 }
 
 interface ConnectionTarget {
-  vncHost: string;
-  vncPort: string;
+  protocol: string;
+  host: string;
+  port: string;
 }
 
 interface ViewportState {
@@ -245,34 +246,43 @@ export default function App() {
           throw new Error("Invalid config response: expected object payload");
         }
 
-        const { vncHost, vncPort } = payload as {
-          vncHost?: unknown;
-          vncPort?: unknown;
+        const { protocol, host, port } = payload as {
+          protocol?: unknown;
+          host?: unknown;
+          port?: unknown;
         };
 
-        if (typeof vncHost !== "string" || vncHost.trim().length === 0) {
-          console.error("Invalid /api/config payload (vncHost):", payload);
+        if (protocol !== "vnc" && protocol !== "rdp") {
+          console.error("Invalid /api/config payload (protocol):", payload);
           throw new Error(
-            "Invalid config response: vncHost must be a non-empty string",
+            'Invalid config response: protocol must be "vnc" or "rdp"',
+          );
+        }
+
+        if (typeof host !== "string" || host.trim().length === 0) {
+          console.error("Invalid /api/config payload (host):", payload);
+          throw new Error(
+            "Invalid config response: host must be a non-empty string",
           );
         }
 
         let normalizedPort: string;
-        if (typeof vncPort === "number" && Number.isFinite(vncPort)) {
-          normalizedPort = String(vncPort);
-        } else if (typeof vncPort === "string" && vncPort.trim().length > 0) {
-          normalizedPort = vncPort.trim();
+        if (typeof port === "number" && Number.isFinite(port)) {
+          normalizedPort = String(port);
+        } else if (typeof port === "string" && port.trim().length > 0) {
+          normalizedPort = port.trim();
         } else {
-          console.error("Invalid /api/config payload (vncPort):", payload);
+          console.error("Invalid /api/config payload (port):", payload);
           throw new Error(
-            "Invalid config response: vncPort must be a non-empty string or number",
+            "Invalid config response: port must be a non-empty string or number",
           );
         }
 
         if (cancelled) return;
         setConnectionTarget({
-          vncHost: vncHost.trim(),
-          vncPort: normalizedPort,
+          protocol,
+          host: host.trim(),
+          port: normalizedPort,
         });
         setConnectionTargetError(null);
       } catch (err) {
@@ -468,7 +478,7 @@ export default function App() {
   // Update document title based on connection state.
   useEffect(() => {
     if (state === "connected" && connectionTarget) {
-      document.title = `${connectionTarget.vncHost}:${connectionTarget.vncPort} — guac-vnc`;
+      document.title = `${connectionTarget.host}:${connectionTarget.port} — guac-vnc`;
     } else {
       document.title = "guac-vnc";
     }
@@ -1111,7 +1121,7 @@ export default function App() {
                 <p>Connecting...</p>
                 <p>
                   {connectionTarget
-                    ? `Target: ${connectionTarget.vncHost}:${connectionTarget.vncPort}`
+                    ? `Target: ${connectionTarget.protocol}://${connectionTarget.host}:${connectionTarget.port}`
                     : connectionTargetError || "Target: loading..."}
                 </p>
               </div>
@@ -1124,7 +1134,7 @@ export default function App() {
                 </p>
                 <p>
                   {connectionTarget
-                    ? `Target: ${connectionTarget.vncHost}:${connectionTarget.vncPort}`
+                    ? `Target: ${connectionTarget.protocol}://${connectionTarget.host}:${connectionTarget.port}`
                     : connectionTargetError || "Target: loading..."}
                 </p>
                 {state === "error" && error && <p>Error: {error}</p>}

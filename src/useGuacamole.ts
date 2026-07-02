@@ -1,12 +1,10 @@
 import Guacamole from "guacamole-common-js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ConnectionConfig,
+  parseConnectionConfig,
+} from "./connectionConfig";
 import { computeResizeTarget, updateNativeDisplayFloor } from "./resizeSizing";
-
-interface Config {
-  protocol: "vnc" | "rdp";
-  host: string;
-  port: string;
-}
 
 interface ConnectOptions {
   sessionId?: string;
@@ -130,7 +128,7 @@ export function useGuacamole(
       setError(null);
 
       // Fetch config from server
-      let config: Config;
+      let config: ConnectionConfig;
       try {
         const res = await fetch("/api/app/config");
         if (!res.ok) {
@@ -144,10 +142,14 @@ export function useGuacamole(
           setState("error");
           return;
         }
-        config = await res.json();
-      } catch {
+        config = parseConnectionConfig(await res.json());
+      } catch (err) {
         if (connectionId !== connectionIdRef.current) return;
-        setError("Failed to fetch config");
+        setError(
+          err instanceof Error && err.message.startsWith("Invalid config")
+            ? err.message
+            : "Failed to fetch config",
+        );
         setState("error");
         return;
       }
@@ -1393,7 +1395,7 @@ export function useGuacamole(
       // Build connection string
       const params = new URLSearchParams();
       params.set("VERSION", "VERSION_1_5_0");
-      params.set("TYPE", config.protocol === "rdp" ? "rdp" : "vnc");
+      params.set("TYPE", config.protocol);
       params.set("HOSTNAME", config.host);
       params.set("PORT", config.port);
       params.set("RESIZE_METHOD", "display-update");

@@ -10,8 +10,8 @@ import {
   isValidSession,
   verifyCredentials,
 } from "./auth.js";
-import { attachGuacProxy, closeAll, getVncDisplaySize } from "./guacProxy.js";
 import { claimSession, hasActiveSession } from "./session.js";
+import { attachVncProxy, closeAll } from "./vncProxy.js";
 
 initHtpasswd();
 
@@ -26,13 +26,9 @@ const PORT = Number.parseInt(
 );
 const HOST = process.env.HOST || "127.0.0.1";
 
-const GUACD_HOST = process.env.GUACD_HOST || "127.0.0.1";
-const GUACD_PORT = Number.parseInt(process.env.GUACD_PORT || "14822", 10);
-const REMOTE_PROTOCOL = process.env.REMOTE_PROTOCOL === "rdp" ? "rdp" : "vnc";
 const VNC_HOST = process.env.VNC_HOST || "127.0.0.1";
-const VNC_PORT = process.env.VNC_PORT || "5901";
-const RDP_HOST = process.env.RDP_HOST || "127.0.0.1";
-const RDP_PORT = process.env.RDP_PORT || "3389";
+const VNC_PORT = Number.parseInt(process.env.VNC_PORT || "5901", 10);
+const VNC_PASSWORD = process.env.VNC_PASSWORD || "";
 
 const COOKIE_FLAGS = "HttpOnly; SameSite=Strict; Path=/; Secure";
 
@@ -90,14 +86,37 @@ app.use("/api/app", (req, res, next) => {
 
 app.get("/api/app/config", (_req, res) => {
   res.json({
-    protocol: REMOTE_PROTOCOL,
-    host: REMOTE_PROTOCOL === "rdp" ? RDP_HOST : VNC_HOST,
-    port: REMOTE_PROTOCOL === "rdp" ? RDP_PORT : VNC_PORT,
+    host: VNC_HOST,
+    port: VNC_PORT,
+    // Single-user tool behind site auth; the browser performs VNC auth
+    // directly, so it needs the password.
+    vncPassword: VNC_PASSWORD,
   });
 });
 
+// The proxy is a dumb byte pipe, so the display size is reported by the
+// client after each framebuffer resize instead of being sniffed server-side.
+let reportedDisplaySize = { width: 0, height: 0 };
+
 app.get("/api/app/display", (_req, res) => {
-  res.json(getVncDisplaySize());
+  res.json(reportedDisplaySize);
+});
+
+app.post("/api/app/display", (req, res) => {
+  const { width, height } =
+    (req.body as { width?: number; height?: number } | undefined) ?? {};
+  if (
+    typeof width === "number" &&
+    Number.isFinite(width) &&
+    typeof height === "number" &&
+    Number.isFinite(height)
+  ) {
+    reportedDisplaySize = {
+      width: Math.round(width),
+      height: Math.round(height),
+    };
+  }
+  res.json({ ok: true });
 });
 
 app.get("/api/app/session", (_req, res) => {
@@ -132,7 +151,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
 });
 
-attachGuacProxy(server, { guacdHost: GUACD_HOST, guacdPort: GUACD_PORT });
+attachVncProxy(server, { vncHost: VNC_HOST, vncPort: VNC_PORT });
 
 const activeHttpSockets = new Set<Socket>();
 server.on("connection", (socket) => {

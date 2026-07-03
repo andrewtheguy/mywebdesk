@@ -98,6 +98,10 @@ export class HiDpiRFB extends RFB {
     );
   }
 
+  get connected(): boolean {
+    return this._rfbConnectionState === "connected";
+  }
+
   get fbSize(): FbSize {
     return { width: this._fbWidth, height: this._fbHeight };
   }

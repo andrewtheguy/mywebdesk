@@ -100,6 +100,7 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
   const manualDisconnectRef = useRef(false);
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [clipboardText, setClipboardText] = useState("");
   const resizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connect = useCallback(
@@ -1337,6 +1338,12 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         setError("VNC server requires credentials that are not configured");
       });
 
+      // Clipboard from remote (noVNC handles the extended/Unicode transport)
+      rfb.addEventListener("clipboard", (event) => {
+        if (connectionId !== connectionIdRef.current) return;
+        setClipboardText(event.detail.text);
+      });
+
       // Keyboard: reuse one noVNC Keyboard per container; the handler routes
       // through rfbRef so it goes inert after disconnect.
       if (!keyboardRef.current || keyboardTargetRef.current !== containerEl) {
@@ -1393,13 +1400,12 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
     setState("disconnected");
   }, []);
 
-  // Clipboard is intentionally not implemented (MVP scope cut). The hook
-  // keeps the same surface as before so App.tsx does not need surgery;
-  // adding it back is rfb.clipboardPasteFrom + the RFB "clipboard" event.
-  const sendClipboard = useCallback((_text: string): boolean => {
-    return false;
+  const sendClipboard = useCallback((text: string): boolean => {
+    const rfb = rfbRef.current;
+    if (!rfb || !rfb.connected) return false;
+    rfb.clipboardPasteFrom(text);
+    return true;
   }, []);
-  const clipboardText = "";
 
   const sendKey = useCallback((keysym: number, pressed: boolean) => {
     rfbRef.current?.sendKey(keysym, null, pressed);

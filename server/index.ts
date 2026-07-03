@@ -153,9 +153,18 @@ if (isProduction) {
     const assetPath = embeddedAssets.get(req.path);
     if (assetPath) {
       const file = Bun.file(assetPath);
-      res.setHeader("Content-Type", file.type || "application/octet-stream");
+      // Bun doesn't know the .webmanifest type; browsers require this exact one.
+      const contentType = req.path.endsWith(".webmanifest")
+        ? "application/manifest+json"
+        : file.type || "application/octet-stream";
+      res.setHeader("Content-Type", contentType);
       if (req.path.startsWith("/assets/")) {
+        // Hashed, content-addressed bundles — safe to cache forever.
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        // Everything else at the root (sw.js, manifest, icons) must revalidate
+        // so PWA updates propagate immediately.
+        res.setHeader("Cache-Control", "no-cache");
       }
       res.send(Buffer.from(await file.arrayBuffer()));
       return;
@@ -167,6 +176,7 @@ if (isProduction) {
     if (indexPath) {
       const file = Bun.file(indexPath);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
       res.send(Buffer.from(await file.arrayBuffer()));
       return;
     }

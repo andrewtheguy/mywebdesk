@@ -26,3 +26,13 @@ createRoot(rootElement).render(
     <App />
   </StrictMode>,
 );
+
+// Register the network-only service worker so the app is installable as a PWA.
+// It caches nothing, so registration never risks serving stale content.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      // Non-fatal: the app works fine without the service worker (no install).
+    });
+  });
+}

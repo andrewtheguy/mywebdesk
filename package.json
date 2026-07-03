@@ -1,14 +1,16 @@
 {
   "name": "guac-vnc",
   "private": true,
-  "version": "0.0.23",
+  "version": "0.0.24",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
     "dev:client": "vite",
     "dev:server": "bun --watch server/index.ts",
     "build": "vite build",
-    "start": "NODE_ENV=production bun server/index.ts"
+    "start": "NODE_ENV=production bun server/index.ts",
+    "check": "bunx biome check . && bunx tsc --noEmit",
+    "compile": "bun run scripts/compile.ts"
   },
   "dependencies": {
     "@novnc/novnc": "1.7.0",

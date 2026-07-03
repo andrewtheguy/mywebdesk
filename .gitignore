@@ -1,5 +1,7 @@
 node_modules
 dist
+bin
+server/embeddedAssets.generated.ts
 *.log
 .env
 .env.local

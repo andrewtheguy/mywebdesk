@@ -1,5 +1,4 @@
 import type { Socket } from "node:net";
-import path from "node:path";
 import express from "express";
 import {
   createSession,
@@ -12,6 +11,18 @@ import {
 } from "./auth.js";
 import { claimSession, hasActiveSession } from "./session.js";
 import { attachVncProxy, closeAll } from "./vncProxy.js";
+
+// Injected at compile time via `bun build --define`; falls back to "dev" when run
+// directly (bun run dev/start).
+declare const BUILD_VERSION: string;
+const VERSION = typeof BUILD_VERSION !== "undefined" ? BUILD_VERSION : "dev";
+
+// Print version and exit before touching config, so `guac-vnc --version` works
+// with no env set (install.sh uses this to smoke-test the downloaded binary).
+if (process.argv.includes("--version") || process.argv.includes("-v")) {
+  console.log(VERSION);
+  process.exit(0);
+}
 
 initHtpasswd();
 
@@ -130,22 +141,41 @@ app.post("/api/app/session", (req, res) => {
   res.json({ sessionId });
 });
 
-// Serve static frontend assets (production build)
-if (process.env.NODE_ENV === "production") {
-  const distPath = path.resolve(process.cwd(), "dist");
-  app.use(express.static(distPath));
-
-  // SPA fallback
-  app.use((req, res, next) => {
-    if (req.method !== "GET" || req.path.startsWith("/api/")) {
+// Serve static frontend assets (production build). In the compiled binary these
+// are embedded via `with { type: "file" }`, so nothing is read from cwd/dist.
+if (isProduction) {
+  const { embeddedAssets } = await import("./embeddedAssets.generated.js");
+  const indexPath = embeddedAssets.get("/index.html");
+  app.use(async (req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") {
       return next();
     }
-    return res.sendFile(path.join(distPath, "index.html"));
+    const assetPath = embeddedAssets.get(req.path);
+    if (assetPath) {
+      const file = Bun.file(assetPath);
+      res.setHeader("Content-Type", file.type || "application/octet-stream");
+      if (req.path.startsWith("/assets/")) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+      res.send(Buffer.from(await file.arrayBuffer()));
+      return;
+    }
+    if (req.path.startsWith("/api/")) {
+      return next();
+    }
+    // SPA fallback
+    if (indexPath) {
+      const file = Bun.file(indexPath);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(Buffer.from(await file.arrayBuffer()));
+      return;
+    }
+    next();
   });
 }
 
 const server = app.listen(PORT, HOST, () => {
-  console.log(`Server running on http://${HOST}:${PORT}`);
+  console.log(`guac-vnc ${VERSION} running on http://${HOST}:${PORT}`);
 });
 
 attachVncProxy(server, {

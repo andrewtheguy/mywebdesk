@@ -12,6 +12,8 @@ interface VncProxyOptions {
 const activeSockets = new Set<net.Socket>();
 const activeWebSockets = new Set<WebSocket>();
 
+const CONNECT_TIMEOUT_MS = 10_000;
+
 // Dumb byte pipe between the browser's RFB client (over WebSocket) and the
 // VNC server's TCP socket. All protocol logic lives in the browser.
 export function attachVncProxy(
@@ -55,6 +57,20 @@ export function attachVncProxy(
     });
     tcp.setNoDelay(true);
     activeSockets.add(tcp);
+
+    // Fail fast on unreachable/unresponsive targets. Only guards the connect
+    // phase — an established RFB session is legitimately idle when nothing
+    // on the remote screen changes.
+    const connectTimer = setTimeout(() => {
+      console.error(
+        `VNC connect timed out (${options.vncHost}:${options.vncPort})`,
+      );
+      tcp.destroy();
+      if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
+        ws.close(1011, "vnc-unreachable");
+      }
+    }, CONNECT_TIMEOUT_MS);
+    tcp.on("connect", () => clearTimeout(connectTimer));
 
     // Manual byte pipe (Bun's `ws` shim does not implement
     // createWebSocketStream). Client→server traffic is tiny (input events),
@@ -107,6 +123,7 @@ export function attachVncProxy(
     });
 
     tcp.on("close", () => {
+      clearTimeout(connectTimer);
       clearDrainTimer();
       activeSockets.delete(tcp);
       if (ws.readyState === ws.OPEN) {

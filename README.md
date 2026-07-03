@@ -4,11 +4,11 @@
 > This program is meant for the original developer's personal use; no backward compatibility, user-friendliness, or multi-user security is required.
 > This project is still experimental: behavior may be unstable, features may change or be removed without notice, and updates may introduce regressions.
 
-Minimal, mobile-friendly VNC viewer with true HiDPI/Retina support, using `@novnc/novnc` for the RFB protocol with a custom UI.
+Minimal, mobile-friendly VNC viewer using `@novnc/novnc` for the RFB protocol with a custom UI.
 
 ## Pain points solved
 
-- **True HiDPI/Retina** — the remote desktop is resized to exactly `viewport × devicePixelRatio` and rendered 1:1 in device pixels (see below)
+- **1:1 device-pixel rendering** — the remote desktop is resized to exactly `viewport × devicePixelRatio` and rendered 1:1 in device pixels (see below)
 - **Visible menu toggle** — FAB button always visible (no Ctrl+Alt+Shift or swipe needed)
 - **Consistent touch controls** — one-finger tap: left-click at cursor; hard-press: hold left-click; second-finger directional drag: move cursor while hold-drag is active; two-finger tap: right-click; two-finger pinch: zoom; two-finger drag: pan when not in hold-drag mode; three-finger swipe: scroll (vertical and horizontal via RFB wheel buttons 6/7)
 - **Smart sizing** — follows viewport/container size, min-clamped to native VNC resolution
@@ -95,7 +95,9 @@ bun server/gen-htpasswd.ts admin
 
 The output is a ready-to-paste `.env` line (base64-encoded `username:bcrypt_hash`, no escaping needed).
 
-## HiDPI (Mac desktop)
+## HiDPI (Mac desktop) — partial workaround
+
+This is a workaround that helps, not full HiDPI support: the client can render the framebuffer crisply, but true HiDPI depends on the remote desktop environment scaling its own UI, which is a global session setting with the limitations noted below.
 
 On non-touch devices the client requests a remote desktop of exactly `viewport CSS size × devicePixelRatio` via the RFB SetDesktopSize extension, then scales the canvas down by `1/devicePixelRatio` so one framebuffer pixel maps to one device pixel — pixel-crisp on Retina. (Stock noVNC sizes in CSS pixels; a small `RFB` subclass overrides its screen-size calculation, pinned to noVNC 1.7.0.)
 

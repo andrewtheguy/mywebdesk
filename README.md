@@ -126,3 +126,26 @@ Touch devices (iPad/phone) keep 1× sizing and rely on pinch-zoom instead, same 
 ## Browser requirements
 
 Requires the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) (`crypto.subtle`) and a secure context (HTTPS or localhost) — noVNC also requires a secure context. The app will refuse to load on unsupported browsers.
+
+## Standalone window (Chrome app mode)
+
+To run the viewer in its own window with no tabs or toolbar, launch Chrome with
+`--app=<url>`. Add a dedicated `--user-data-dir` so it always opens a separate
+instance (and keeps its session isolated from your normal browsing):
+
+```bash
+# macOS — invoke the binary directly; `open -a ... --args` is ignored when
+# Chrome is already running and just opens a tab in the existing window.
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --app=https://your-host/ \
+  --user-data-dir="$HOME/.mywebdesk-chrome"
+
+# Linux
+google-chrome --app=https://your-host/ --user-data-dir="$HOME/.mywebdesk-chrome"
+
+# Windows
+chrome.exe --app=https://your-host/ --user-data-dir="%USERPROFILE%\.mywebdesk-chrome"
+```
+
+Optional: `--window-size=1280,800`, `--start-fullscreen`, or `--kiosk` (fullscreen,
+locked; exit with Alt+F4 / Cmd+Q).

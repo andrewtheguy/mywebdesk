@@ -1,10 +1,9 @@
-import Guacamole from "guacamole-common-js";
+import Keyboard from "@novnc-core/input/keyboard.js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  type ConnectionConfig,
-  parseConnectionConfig,
-} from "./connectionConfig";
+import { parseConnectionConfig } from "./connectionConfig";
+import { HiDpiRFB } from "./HiDpiRFB";
 import { computeResizeTarget, updateNativeDisplayFloor } from "./resizeSizing";
+import { type MouseButtonState, toRfbButtonMask } from "./rfbInput";
 
 interface ConnectOptions {
   sessionId?: string;
@@ -29,14 +28,13 @@ const TWO_FINGER_TAP_MAX_MOVE_PX = 12;
 const TWO_FINGER_TAP_MAX_DURATION_MS = 260;
 const THREE_FINGER_SCROLL_AXIS_LOCK_PX = 10;
 const THREE_FINGER_SCROLL_STEP_PX = 32;
-const HORIZONTAL_SCROLL_MODIFIER_KEYSYM = 0xffe1;
 const RESIZE_RETRY_DELAY_MS = 220;
 const MAX_RESIZE_RETRIES = 6;
-const GUAC_STATUS_MESSAGES: Record<number, string> = {
-  512: "Proxy/server error while establishing the session",
-  514: "Timed out waiting for the upstream connection to become ready",
-  519: "Unable to reach the configured VNC target",
-};
+
+// RFB pointer button masks (buttons 6/7 = horizontal wheel).
+const MASK_NONE = 0;
+const MASK_WHEEL_LEFT = 32;
+const MASK_WHEEL_RIGHT = 64;
 
 interface PanOffset {
   x: number;
@@ -90,24 +88,11 @@ interface ThreeFingerScrollGesture {
   carryY: number;
 }
 
-function formatGuacStatusError(
-  status: Guacamole.Status,
-  fallbackLabel: string,
-): string {
-  const message = status.message?.trim();
-  if (message) return message;
-  const mapped = GUAC_STATUS_MESSAGES[status.code];
-  if (mapped) return `${mapped} (code ${status.code})`;
-  return `${fallbackLabel} (${status.code})`;
-}
-
-export function useGuacamole(
-  containerRef: React.RefObject<HTMLDivElement | null>,
-) {
-  const clientRef = useRef<Guacamole.Client | null>(null);
-  const keyboardRef = useRef<Guacamole.Keyboard | null>(null);
+export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
+  const rfbRef = useRef<HiDpiRFB | null>(null);
+  const keyboardRef = useRef<Keyboard | null>(null);
   const keyboardTargetRef = useRef<HTMLElement | Document | null>(null);
-  const displayElementRef = useRef<HTMLElement | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
   const connectionIdRef = useRef(0);
   const manualDisconnectRef = useRef(false);
   const [state, setState] = useState<ConnectionState>("idle");
@@ -124,11 +109,23 @@ export function useGuacamole(
       connectionIdRef.current = connectionId;
       manualDisconnectRef.current = false;
 
+      // Tear down any previous connection's DOM/listeners first.
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+      if (rfbRef.current) {
+        try {
+          rfbRef.current.disconnect();
+        } catch {
+          // Already torn down.
+        }
+        rfbRef.current = null;
+      }
+
       setState("connecting");
       setError(null);
 
-      // Fetch config from server
-      let config: ConnectionConfig;
+      // Pre-flight: verify auth and config shape before opening the tunnel.
+      // The proxy holds the VNC target and password server-side.
       try {
         const res = await fetch("/api/app/config");
         if (!res.ok) {
@@ -142,7 +139,7 @@ export function useGuacamole(
           setState("error");
           return;
         }
-        config = parseConnectionConfig(await res.json());
+        parseConnectionConfig(await res.json());
       } catch (err) {
         if (connectionId !== connectionIdRef.current) return;
         setError(
@@ -155,121 +152,74 @@ export function useGuacamole(
       }
       if (connectionId !== connectionIdRef.current) return;
 
-      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${wsProtocol}//${window.location.host}/guac/ws`;
-      const tunnel = new Guacamole.WebSocketTunnel(wsUrl);
-      const client = new Guacamole.Client(tunnel);
-      clientRef.current = client;
-      let canSendResize = false;
       const canPinchZoom = (navigator.maxTouchPoints || 0) >= 2;
       const useHiDpiSessionSizing = !canPinchZoom;
 
-      tunnel.onerror = (status: Guacamole.Status) => {
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsParams = new URLSearchParams();
+      if (options?.sessionId) wsParams.set("SESSION_ID", options.sessionId);
+      const wsUrl = `${wsProtocol}//${window.location.host}/vnc/ws?${wsParams.toString()}`;
+
+      // Build the WebSocket ourselves so we can observe the close code
+      // (4001 = evicted by a session takeover) before handing it to RFB.
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
+      ws.addEventListener("close", (event) => {
         if (
           connectionId !== connectionIdRef.current ||
           manualDisconnectRef.current
         )
           return;
-        setError(formatGuacStatusError(status, "Tunnel error"));
-        setState("error");
-      };
-
-      tunnel.onstatechange = (tunnelState: number) => {
-        if (connectionId !== connectionIdRef.current) return;
-        canSendResize = tunnelState === Guacamole.Tunnel.State.OPEN;
-        if (canSendResize) {
-          lastRequestedSize = { width: 0, height: 0 };
-          doResize();
-          if (resizeTimer.current) clearTimeout(resizeTimer.current);
-          resizeTimer.current = setTimeout(doResize, 250);
+        if (event.code === 4001) {
+          setError("Session taken over by another client");
+        } else if (event.reason === "vnc-unreachable") {
+          setError("Unable to reach the configured VNC target");
+        } else if (event.reason === "vnc-handshake-failed") {
+          setError(
+            "VNC handshake failed on the server (check VNC_PASSWORD and the server log)",
+          );
         }
-        if (tunnelState === Guacamole.Tunnel.State.CLOSED) {
-          if (manualDisconnectRef.current) {
-            setState("disconnected");
-          } else {
-            setError((prev) => prev || "Tunnel closed unexpectedly");
-            setState("error");
-          }
-        }
-      };
+      });
 
-      // Add display element
-      const display = client.getDisplay();
-      const displayEl = display.getElement();
-      displayEl.style.cursor = "none";
-      displayEl.style.touchAction = "none";
-      displayEl.style.transformOrigin = "0 0";
-      displayEl.style.willChange = "transform";
-      const previousDisplayEl = displayElementRef.current;
-      if (
-        previousDisplayEl &&
-        previousDisplayEl.parentElement === containerEl
-      ) {
-        containerEl.removeChild(previousDisplayEl);
+      // Mount point for noVNC's screen/canvas plus our input overlay on top.
+      // The overlay starves noVNC's own canvas-attached mouse/touch handlers
+      // (viewOnly must stay false or noVNC refuses resize/key requests).
+      containerEl.style.position = "relative";
+      const overlayEl = document.createElement("div");
+      overlayEl.style.position = "absolute";
+      overlayEl.style.inset = "0";
+      overlayEl.style.zIndex = "1";
+      overlayEl.style.cursor = "none";
+      overlayEl.style.touchAction = "none";
+
+      // No credentials: the server-side proxy answers the VNC auth challenge
+      // itself and presents security type None to the browser, so the VNC
+      // password never reaches the client.
+      const rfb = new HiDpiRFB(containerEl, ws);
+      rfbRef.current = rfb;
+      rfb.focusOnClick = false;
+      containerEl.appendChild(overlayEl);
+
+      const screenEl = rfb.screenElement;
+      const canvasEl = rfb.canvasElement;
+      screenEl.style.overflow = "hidden";
+      canvasEl.style.margin = "0";
+      canvasEl.style.transformOrigin = "0 0";
+      canvasEl.style.willChange = "transform";
+
+      let canSendResize = false;
+
+      function getRemoteWidth(): number {
+        return rfb.fbSize.width;
       }
-      containerEl.appendChild(displayEl);
-      displayElementRef.current = displayEl;
 
-      // State change handler
-      client.onstatechange = (clientState: number) => {
-        if (connectionId !== connectionIdRef.current) return;
-        switch (clientState) {
-          case Guacamole.Client.State.CONNECTING:
-          case Guacamole.Client.State.WAITING:
-            setState("connecting");
-            break;
-          case Guacamole.Client.State.CONNECTED:
-            setState("connected");
-            scheduleResize();
-            break;
-          case Guacamole.Client.State.DISCONNECTED:
-          case Guacamole.Client.State.DISCONNECTING:
-            setState("disconnected");
-            break;
-        }
-      };
-
-      client.onerror = (status: Guacamole.Status) => {
-        if (connectionId !== connectionIdRef.current) return;
-        setError(formatGuacStatusError(status, "Remote session error"));
-        setState("error");
-      };
-
-      // Clipboard from remote
-      client.onclipboard = (
-        stream: Guacamole.InputStream,
-        mimetype: string,
-      ) => {
-        if (mimetype !== "text/plain") return;
-        const reader = new Guacamole.StringReader(stream);
-        let data = "";
-        reader.ontext = (text: string) => {
-          data += text;
-        };
-        reader.onend = () => {
-          setClipboardText(data);
-        };
-      };
-
-      // Keyboard
-      let keyboard = keyboardRef.current;
-      if (!keyboard || keyboardTargetRef.current !== containerEl) {
-        if (keyboard) {
-          keyboard.onkeydown = null;
-          keyboard.onkeyup = null;
-          keyboard.reset();
-        }
-        keyboard = new Guacamole.Keyboard(containerEl);
-        keyboardRef.current = keyboard;
-        keyboardTargetRef.current = containerEl;
+      function getRemoteHeight(): number {
+        return rfb.fbSize.height;
       }
-      keyboard.onkeydown = (keysym: number) => {
-        clientRef.current?.sendKeyEvent(true, keysym);
-        return false;
-      };
-      keyboard.onkeyup = (keysym: number) => {
-        clientRef.current?.sendKeyEvent(false, keysym);
-      };
+
+      function sendMouse(x: number, y: number, state: MouseButtonState): void {
+        rfb.sendPointer(x, y, toRfbButtonMask(state));
+      }
 
       let fitScale = 1;
       let zoomScale = 1;
@@ -314,6 +264,23 @@ export function useGuacamole(
         };
       }
 
+      function computeSessionSizeTarget(): { width: number; height: number } {
+        const vp = window.visualViewport;
+        const dpr = useHiDpiSessionSizing ? window.devicePixelRatio || 1 : 1;
+        return computeResizeTarget({
+          viewportWidth: vp ? vp.width : window.innerWidth,
+          viewportHeight: vp ? vp.height : window.innerHeight,
+          dpr,
+          nativeDisplaySize,
+          nativeDisplayDprFloor,
+        });
+      }
+
+      // noVNC reads this whenever it decides to request a remote resize
+      // (our doResize pokes, plus its own container ResizeObserver).
+      rfb.computeTargetSize = () => computeSessionSizeTarget();
+      rfb.resizeSession = true;
+
       function clampPanToBounds(
         x: number,
         y: number,
@@ -321,8 +288,8 @@ export function useGuacamole(
       ): PanOffset {
         const { width: containerWidth, height: containerHeight } =
           getContainerSize();
-        const scaledWidth = display.getWidth() * effectiveScale;
-        const scaledHeight = display.getHeight() * effectiveScale;
+        const scaledWidth = getRemoteWidth() * effectiveScale;
+        const scaledHeight = getRemoteHeight() * effectiveScale;
         const minX = Math.min(0, containerWidth - scaledWidth);
         const minY = Math.min(0, containerHeight - scaledHeight);
 
@@ -336,8 +303,8 @@ export function useGuacamole(
         nextZoomScale = zoomScale,
         nextPan = panOffset,
       ): void {
-        const displayWidth = display.getWidth();
-        const displayHeight = display.getHeight();
+        const displayWidth = getRemoteWidth();
+        const displayHeight = getRemoteHeight();
         if (displayWidth <= 0 || displayHeight <= 0) return;
 
         const { width: containerWidth } = getContainerSize();
@@ -345,9 +312,9 @@ export function useGuacamole(
         zoomScale = clampValue(nextZoomScale, MIN_ZOOM, MAX_ZOOM);
         const effectiveScale = fitScale * zoomScale;
 
-        display.scale(effectiveScale);
+        rfb.setBaseScale(effectiveScale);
         panOffset = clampPanToBounds(nextPan.x, nextPan.y, effectiveScale);
-        displayEl.style.transform = `translate3d(${panOffset.x}px, ${panOffset.y}px, 0)`;
+        canvasEl.style.transform = `translate3d(${panOffset.x}px, ${panOffset.y}px, 0)`;
       }
 
       function getTouchDistance(first: Touch, second: Touch): number {
@@ -465,8 +432,8 @@ export function useGuacamole(
         x: number,
         y: number,
       ): { x: number; y: number } {
-        const width = display.getWidth();
-        const height = display.getHeight();
+        const width = getRemoteWidth();
+        const height = getRemoteHeight();
         const maxX = Math.max(0, width - 1);
         const maxY = Math.max(0, height - 1);
         return {
@@ -481,8 +448,8 @@ export function useGuacamole(
         top: number;
         bottom: number;
       } {
-        const displayWidth = display.getWidth();
-        const displayHeight = display.getHeight();
+        const displayWidth = getRemoteWidth();
+        const displayHeight = getRemoteHeight();
         const { width: containerWidth, height: containerHeight } =
           getContainerSize();
         const maxX = Math.max(0, displayWidth - 1);
@@ -512,24 +479,14 @@ export function useGuacamole(
         const clamped = clampCursorToDisplay(remoteX, remoteY);
         cursorPosition = { x: clamped.x, y: clamped.y };
         hasCursorPosition = true;
-        client.sendMouseState(
-          new Guacamole.Mouse.State(
-            clamped.x,
-            clamped.y,
-            leftDown,
-            false,
-            false,
-            false,
-            false,
-          ),
-        );
+        sendMouse(clamped.x, clamped.y, { left: leftDown });
       }
 
       function getCurrentCursorPosition(): { x: number; y: number } {
         if (hasCursorPosition) return cursorPosition;
         const fallback = clampCursorToDisplay(
-          display.getWidth() / 2,
-          display.getHeight() / 2,
+          getRemoteWidth() / 2,
+          getRemoteHeight() / 2,
         );
         cursorPosition = fallback;
         hasCursorPosition = true;
@@ -538,54 +495,14 @@ export function useGuacamole(
 
       function sendTapClick(): void {
         const cursor = getCurrentCursorPosition();
-        client.sendMouseState(
-          new Guacamole.Mouse.State(
-            cursor.x,
-            cursor.y,
-            true,
-            false,
-            false,
-            false,
-            false,
-          ),
-        );
-        client.sendMouseState(
-          new Guacamole.Mouse.State(
-            cursor.x,
-            cursor.y,
-            false,
-            false,
-            false,
-            false,
-            false,
-          ),
-        );
+        sendMouse(cursor.x, cursor.y, { left: true });
+        sendMouse(cursor.x, cursor.y, {});
       }
 
       function sendRightClick(): void {
         const cursor = getCurrentCursorPosition();
-        client.sendMouseState(
-          new Guacamole.Mouse.State(
-            cursor.x,
-            cursor.y,
-            false,
-            false,
-            true,
-            false,
-            false,
-          ),
-        );
-        client.sendMouseState(
-          new Guacamole.Mouse.State(
-            cursor.x,
-            cursor.y,
-            false,
-            false,
-            false,
-            false,
-            false,
-          ),
-        );
+        sendMouse(cursor.x, cursor.y, { right: true });
+        sendMouse(cursor.x, cursor.y, {});
       }
 
       function sendWheelFromRemote(
@@ -597,28 +514,8 @@ export function useGuacamole(
         const clamped = clampCursorToDisplay(remoteX, remoteY);
         cursorPosition = { x: clamped.x, y: clamped.y };
         hasCursorPosition = true;
-        client.sendMouseState(
-          new Guacamole.Mouse.State(
-            clamped.x,
-            clamped.y,
-            false,
-            false,
-            false,
-            up,
-            down,
-          ),
-        );
-        client.sendMouseState(
-          new Guacamole.Mouse.State(
-            clamped.x,
-            clamped.y,
-            false,
-            false,
-            false,
-            false,
-            false,
-          ),
-        );
+        sendMouse(clamped.x, clamped.y, { up, down });
+        sendMouse(clamped.x, clamped.y, {});
       }
 
       function sendVerticalScrollTick(direction: "up" | "down"): void {
@@ -632,10 +529,15 @@ export function useGuacamole(
       }
 
       function sendHorizontalScrollTick(direction: "left" | "right"): void {
-        // Guacamole exposes vertical wheel buttons only; emulate horizontal via Shift+Wheel.
-        client.sendKeyEvent(true, HORIZONTAL_SCROLL_MODIFIER_KEYSYM);
-        sendVerticalScrollTick(direction === "left" ? "up" : "down");
-        client.sendKeyEvent(false, HORIZONTAL_SCROLL_MODIFIER_KEYSYM);
+        // RFB has native horizontal wheel buttons (6/7), unlike Guacamole's
+        // old Shift+Wheel emulation.
+        const cursor = getCurrentCursorPosition();
+        rfb.sendPointer(
+          cursor.x,
+          cursor.y,
+          direction === "left" ? MASK_WHEEL_LEFT : MASK_WHEEL_RIGHT,
+        );
+        rfb.sendPointer(cursor.x, cursor.y, MASK_NONE);
       }
 
       function handleThreeFingerScrollMove(touches: TouchList): boolean {
@@ -897,8 +799,8 @@ export function useGuacamole(
           const rawCursor = hasCursorPosition
             ? cursorPosition
             : {
-                x: display.getWidth() / 2,
-                y: display.getHeight() / 2,
+                x: getRemoteWidth() / 2,
+                y: getRemoteHeight() / 2,
               };
           const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
           const visible = getVisibleRemoteBounds(effectiveScale);
@@ -1247,49 +1149,52 @@ export function useGuacamole(
         consumeTouchEvent(e);
       }
 
-      displayEl.addEventListener("touchstart", handleViewportTouchStart, {
+      overlayEl.addEventListener("touchstart", handleViewportTouchStart, {
         passive: false,
       });
-      displayEl.addEventListener("touchmove", handleViewportTouchMove, {
+      overlayEl.addEventListener("touchmove", handleViewportTouchMove, {
         passive: false,
       });
-      displayEl.addEventListener("touchend", handleViewportTouchEnd, {
+      overlayEl.addEventListener("touchend", handleViewportTouchEnd, {
         passive: false,
       });
-      displayEl.addEventListener("touchcancel", handleViewportTouchEnd, {
+      overlayEl.addEventListener("touchcancel", handleViewportTouchEnd, {
         passive: false,
       });
 
       // Mouse (desktop)
-      displayEl.addEventListener("mousedown", handleMouse);
-      displayEl.addEventListener("mouseup", handleMouse);
-      displayEl.addEventListener("mousemove", handleMouse);
-      displayEl.addEventListener("wheel", handleWheel, { passive: false });
-      displayEl.addEventListener("contextmenu", handleContextMenu);
+      overlayEl.addEventListener("mousedown", handleMouse);
+      overlayEl.addEventListener("mouseup", handleMouse);
+      overlayEl.addEventListener("mousemove", handleMouse);
+      overlayEl.addEventListener("wheel", handleWheel, { passive: false });
+      overlayEl.addEventListener("contextmenu", handleContextMenu);
+
+      function remoteCoordsFromClient(
+        clientX: number,
+        clientY: number,
+      ): { x: number; y: number } {
+        // The canvas rect reflects the current pan/scale, so mapping through
+        // it converts overlay coordinates into framebuffer coordinates.
+        const rect = canvasEl.getBoundingClientRect();
+        const scale = rect.width > 0 ? getRemoteWidth() / rect.width : 1;
+        return {
+          x: Math.round((clientX - rect.left) * scale),
+          y: Math.round((clientY - rect.top) * scale),
+        };
+      }
 
       function handleMouse(e: MouseEvent) {
-        const rect = displayEl.getBoundingClientRect();
-        const scale = display.getWidth() / rect.width;
-        const x = Math.round((e.clientX - rect.left) * scale);
-        const y = Math.round((e.clientY - rect.top) * scale);
-        const mouseState = new Guacamole.Mouse.State(
-          x,
-          y,
-          !!(e.buttons & 1),
-          !!(e.buttons & 4),
-          !!(e.buttons & 2),
-          false,
-          false,
-        );
-        client.sendMouseState(mouseState);
+        const { x, y } = remoteCoordsFromClient(e.clientX, e.clientY);
+        sendMouse(x, y, {
+          left: !!(e.buttons & 1),
+          middle: !!(e.buttons & 4),
+          right: !!(e.buttons & 2),
+        });
         e.preventDefault();
       }
 
       function handleWheel(e: WheelEvent) {
-        const rect = displayEl.getBoundingClientRect();
-        const scale = display.getWidth() / rect.width;
-        const x = Math.round((e.clientX - rect.left) * scale);
-        const y = Math.round((e.clientY - rect.top) * scale);
+        const { x, y } = remoteCoordsFromClient(e.clientX, e.clientY);
         sendWheelFromRemote(x, y, e.deltaY < 0, e.deltaY > 0);
         e.preventDefault();
       }
@@ -1298,20 +1203,13 @@ export function useGuacamole(
         e.preventDefault();
       }
 
-      // Resize to the actual viewport/container size (in device pixels for HiDPI),
-      // min-clamped to native VNC resolution.
+      // Resize the remote desktop to the viewport size (in device pixels for
+      // HiDPI), min-clamped to native VNC resolution. noVNC pulls the actual
+      // target from rfb.computeTargetSize when we poke requestResize().
       function doResize() {
         if (!canSendResize) return;
 
-        const vp = window.visualViewport;
-        const dpr = useHiDpiSessionSizing ? window.devicePixelRatio || 1 : 1;
-        const { width: w, height: h } = computeResizeTarget({
-          viewportWidth: vp ? vp.width : window.innerWidth,
-          viewportHeight: vp ? vp.height : window.innerHeight,
-          dpr,
-          nativeDisplaySize,
-          nativeDisplayDprFloor,
-        });
+        const { width: w, height: h } = computeSessionSizeTarget();
 
         if (lastRequestedSize.width === w && lastRequestedSize.height === h) {
           return;
@@ -1320,7 +1218,7 @@ export function useGuacamole(
         pendingResizeTarget = { width: w, height: h };
         pendingResizeRetries = 0;
 
-        client.sendSize(w, h);
+        rfb.requestResize();
         queueResizeRetry();
       }
 
@@ -1335,8 +1233,8 @@ export function useGuacamole(
 
         resizeRetryTimer = setTimeout(() => {
           if (!pendingResizeTarget || !canSendResize) return;
-          const remoteWidth = display.getWidth();
-          const remoteHeight = display.getHeight();
+          const remoteWidth = getRemoteWidth();
+          const remoteHeight = getRemoteHeight();
 
           if (
             remoteWidth === pendingResizeTarget.width &&
@@ -1354,16 +1252,16 @@ export function useGuacamole(
           }
 
           pendingResizeRetries += 1;
-          client.sendSize(
-            pendingResizeTarget.width,
-            pendingResizeTarget.height,
-          );
+          rfb.requestResize();
           queueResizeRetry();
         }, RESIZE_RETRY_DELAY_MS);
       }
 
-      // Apply base fit scale and any active pinch zoom/pan.
-      display.onresize = (width: number, height: number) => {
+      // Framebuffer size changes (server applied a resize, or initial size).
+      function handleFbResize(event: Event) {
+        const { width, height } = (
+          event as CustomEvent<{ width: number; height: number }>
+        ).detail;
         const nextNativeFloor = updateNativeDisplayFloor({
           currentNativeDisplaySize: nativeDisplaySize,
           currentNativeDisplayDprFloor: nativeDisplayDprFloor,
@@ -1384,7 +1282,14 @@ export function useGuacamole(
           clearResizeRetryTimer();
         }
         applyDisplayTransform();
-      };
+
+        void fetch("/api/app/display", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ width, height }),
+        }).catch(() => {});
+      }
+      rfb.addEventListener("fbresize", handleFbResize);
 
       window.addEventListener("resize", scheduleResize);
       window.addEventListener("orientationchange", scheduleResize);
@@ -1392,73 +1297,86 @@ export function useGuacamole(
         window.visualViewport.addEventListener("resize", scheduleResize);
       }
 
-      // Build connection string
-      const params = new URLSearchParams();
-      params.set("VERSION", "VERSION_1_5_0");
-      params.set("TYPE", config.protocol);
-      params.set("HOSTNAME", config.host);
-      params.set("PORT", config.port);
-      params.set("RESIZE_METHOD", "display-update");
-      if (config.protocol === "rdp") {
-        params.set("SECURITY", "any");
-        params.set("IGNORE_CERT", "true");
-        params.set("ENABLE_WALLPAPER", "true");
+      // RFB lifecycle events
+      rfb.addEventListener("connect", () => {
+        if (connectionId !== connectionIdRef.current) return;
+        setState("connected");
+        canSendResize = true;
+        lastRequestedSize = { width: 0, height: 0 };
+        doResize();
+        scheduleResize();
+      });
+
+      rfb.addEventListener("disconnect", (event) => {
+        if (connectionId !== connectionIdRef.current) return;
+        canSendResize = false;
+        if (manualDisconnectRef.current) {
+          setState("disconnected");
+          return;
+        }
+        const clean = event.detail.clean;
+        setError(
+          (prev) =>
+            prev ||
+            (clean
+              ? "Disconnected by the server"
+              : "Connection closed unexpectedly"),
+        );
+        setState("error");
+      });
+
+      rfb.addEventListener("securityfailure", (event) => {
+        if (connectionId !== connectionIdRef.current) return;
+        const reason = event.detail.reason;
+        setError(
+          reason
+            ? `VNC authentication failed: ${reason}`
+            : "VNC authentication failed",
+        );
+      });
+
+      rfb.addEventListener("credentialsrequired", () => {
+        if (connectionId !== connectionIdRef.current) return;
+        setError("VNC server requires credentials that are not configured");
+      });
+
+      // Clipboard from remote (noVNC handles the extended/Unicode transport)
+      rfb.addEventListener("clipboard", (event) => {
+        if (connectionId !== connectionIdRef.current) return;
+        setClipboardText(event.detail.text);
+      });
+
+      // Keyboard: reuse one noVNC Keyboard per container; the handler routes
+      // through rfbRef so it goes inert after disconnect.
+      if (!keyboardRef.current || keyboardTargetRef.current !== containerEl) {
+        keyboardRef.current?.ungrab();
+        const keyboard = new Keyboard(containerEl);
+        keyboard.onkeyevent = (keysym, code, down) => {
+          rfbRef.current?.sendKey(keysym, code, down);
+        };
+        keyboard.grab();
+        keyboardRef.current = keyboard;
+        keyboardTargetRef.current = containerEl;
       }
-      if (options?.sessionId) params.set("SESSION_ID", options.sessionId);
-      const vp = window.visualViewport;
-      const initialDpr = useHiDpiSessionSizing
-        ? window.devicePixelRatio || 1
-        : 1;
-      params.set(
-        "WIDTH",
-        String(
-          Math.max(
-            1,
-            Math.round((vp ? vp.width : window.innerWidth) * initialDpr),
-          ),
-        ),
-      );
-      params.set(
-        "HEIGHT",
-        String(
-          Math.max(
-            1,
-            Math.round((vp ? vp.height : window.innerHeight) * initialDpr),
-          ),
-        ),
-      );
-      params.set("DPI", String(Math.round(96 * initialDpr)));
 
-      client.connect(params.toString());
-
-      // Store cleanup in ref for disconnect
-      (client as unknown as Record<string, unknown>).__cleanup = () => {
-        tunnel.onerror = null;
-        tunnel.onstatechange = null;
-        displayEl.removeEventListener("touchstart", handleViewportTouchStart);
-        displayEl.removeEventListener("touchmove", handleViewportTouchMove);
-        displayEl.removeEventListener("touchend", handleViewportTouchEnd);
-        displayEl.removeEventListener("touchcancel", handleViewportTouchEnd);
-        displayEl.removeEventListener("mousedown", handleMouse);
-        displayEl.removeEventListener("mouseup", handleMouse);
-        displayEl.removeEventListener("mousemove", handleMouse);
-        displayEl.removeEventListener("wheel", handleWheel);
-        displayEl.removeEventListener("contextmenu", handleContextMenu);
+      cleanupRef.current = () => {
+        rfb.removeEventListener("fbresize", handleFbResize);
+        overlayEl.removeEventListener("touchstart", handleViewportTouchStart);
+        overlayEl.removeEventListener("touchmove", handleViewportTouchMove);
+        overlayEl.removeEventListener("touchend", handleViewportTouchEnd);
+        overlayEl.removeEventListener("touchcancel", handleViewportTouchEnd);
+        overlayEl.removeEventListener("mousedown", handleMouse);
+        overlayEl.removeEventListener("mouseup", handleMouse);
+        overlayEl.removeEventListener("mousemove", handleMouse);
+        overlayEl.removeEventListener("wheel", handleWheel);
+        overlayEl.removeEventListener("contextmenu", handleContextMenu);
         window.removeEventListener("resize", scheduleResize);
         window.removeEventListener("orientationchange", scheduleResize);
         if (window.visualViewport) {
           window.visualViewport.removeEventListener("resize", scheduleResize);
         }
-        if (keyboardRef.current) {
-          keyboardRef.current.onkeydown = null;
-          keyboardRef.current.onkeyup = null;
-          keyboardRef.current.reset();
-        }
-        if (displayElementRef.current === displayEl) {
-          displayElementRef.current = null;
-        }
-        if (displayEl.parentElement === containerEl) {
-          containerEl.removeChild(displayEl);
+        if (overlayEl.parentElement === containerEl) {
+          containerEl.removeChild(overlayEl);
         }
         if (resizeTimer.current) clearTimeout(resizeTimer.current);
         clearResizeRetryTimer();
@@ -1470,54 +1388,37 @@ export function useGuacamole(
   const disconnect = useCallback(() => {
     manualDisconnectRef.current = true;
     connectionIdRef.current += 1;
-    const client = clientRef.current;
-    if (!client) {
-      if (keyboardRef.current) {
-        keyboardRef.current.onkeydown = null;
-        keyboardRef.current.onkeyup = null;
-        keyboardRef.current.reset();
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    const rfb = rfbRef.current;
+    rfbRef.current = null;
+    if (rfb) {
+      try {
+        rfb.disconnect();
+      } catch {
+        // Already torn down.
       }
-      const displayEl = displayElementRef.current;
-      if (displayEl?.parentElement) {
-        displayEl.parentElement.removeChild(displayEl);
-      }
-      displayElementRef.current = null;
-      setState("disconnected");
-      return;
     }
-    const cleanup = (client as unknown as Record<string, unknown>).__cleanup as
-      | (() => void)
-      | undefined;
-    cleanup?.();
-    client.disconnect();
-    clientRef.current = null;
     setState("disconnected");
   }, []);
 
   const sendClipboard = useCallback((text: string): boolean => {
-    const client = clientRef.current;
-    if (!client) return false;
-    try {
-      const stream = client.createClipboardStream("text/plain");
-      const writer = new Guacamole.StringWriter(stream);
-      writer.sendText(text);
-      writer.sendEnd();
-      return true;
-    } catch {
-      return false;
-    }
+    const rfb = rfbRef.current;
+    if (!rfb || !rfb.connected) return false;
+    rfb.clipboardPasteFrom(text);
+    return true;
   }, []);
 
   const sendKey = useCallback((keysym: number, pressed: boolean) => {
-    clientRef.current?.sendKeyEvent(pressed, keysym);
+    rfbRef.current?.sendKey(keysym, null, pressed);
   }, []);
 
   const sendKeyCombo = useCallback((keysyms: number[]) => {
-    const client = clientRef.current;
-    if (!client) return;
-    for (const k of keysyms) client.sendKeyEvent(true, k);
+    const rfb = rfbRef.current;
+    if (!rfb) return;
+    for (const k of keysyms) rfb.sendKey(k, null, true);
     for (let i = keysyms.length - 1; i >= 0; i--)
-      client.sendKeyEvent(false, keysyms[i]);
+      rfb.sendKey(keysyms[i], null, false);
   }, []);
 
   // Cleanup on unmount

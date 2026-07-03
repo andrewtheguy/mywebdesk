@@ -1,5 +1,4 @@
 export interface ConnectionConfig {
-  protocol: "vnc" | "rdp";
   host: string;
   port: string;
 }
@@ -12,16 +11,10 @@ export function parseConnectionConfig(payload: unknown): ConnectionConfig {
     throw new Error("Invalid config response: expected object payload");
   }
 
-  const { protocol, host, port } = payload as {
-    protocol?: unknown;
+  const { host, port } = payload as {
     host?: unknown;
     port?: unknown;
   };
-
-  if (protocol !== "vnc" && protocol !== "rdp") {
-    console.error("Invalid /api/config payload (protocol):", payload);
-    throw new Error('Invalid config response: protocol must be "vnc" or "rdp"');
-  }
 
   if (typeof host !== "string" || host.trim().length === 0) {
     console.error("Invalid /api/config payload (host):", payload);
@@ -40,5 +33,8 @@ export function parseConnectionConfig(payload: unknown): ConnectionConfig {
     );
   }
 
-  return { protocol, host: host.trim(), port: normalizedPort };
+  return {
+    host: host.trim(),
+    port: normalizedPort,
+  };
 }

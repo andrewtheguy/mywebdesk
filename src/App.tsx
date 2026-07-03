@@ -5,7 +5,7 @@ import {
   parseConnectionConfig,
 } from "./connectionConfig";
 import { SoftKeyboardPanel } from "./SoftKeyboard";
-import { useGuacamole } from "./useGuacamole";
+import { useVnc } from "./useVnc";
 
 const FAB_SIZE = 36;
 const FAB_COMBO_WIDTH = 80;
@@ -135,7 +135,7 @@ export default function App() {
     state,
     error,
     clipboardText,
-  } = useGuacamole(containerRef);
+  } = useVnc(containerRef);
 
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [clipboardInput, setClipboardInput] = useState("");
@@ -1078,7 +1078,7 @@ export default function App() {
                 <p>Connecting...</p>
                 <p>
                   {connectionTarget
-                    ? `Target: ${connectionTarget.protocol}://${connectionTarget.host}:${connectionTarget.port}`
+                    ? `Target: vnc://${connectionTarget.host}:${connectionTarget.port}`
                     : connectionTargetError || "Target: loading..."}
                 </p>
               </div>
@@ -1091,7 +1091,7 @@ export default function App() {
                 </p>
                 <p>
                   {connectionTarget
-                    ? `Target: ${connectionTarget.protocol}://${connectionTarget.host}:${connectionTarget.port}`
+                    ? `Target: vnc://${connectionTarget.host}:${connectionTarget.port}`
                     : connectionTargetError || "Target: loading..."}
                 </p>
                 {state === "error" && error && <p>Error: {error}</p>}

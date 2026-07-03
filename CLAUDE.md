@@ -15,7 +15,7 @@ Keep the current architecture unless explicitly asked to change it:
 
 - Client: React + Vite + TypeScript
 - Server: Bun runtime + Express + `ws`
-- Remote protocol: Guacamole + guacd
+- Remote protocol: RFB (VNC) via `@novnc/novnc` in the browser; the server is a dumb WebSocket↔TCP byte pipe
 
 ## Lint & Type Check
 

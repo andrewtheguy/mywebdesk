@@ -1,7 +1,8 @@
 # mywebdesk
 
 > [!WARNING]
-> This project is meant for a single user, and no backward compatibility is required.
+> This project is meant for a single user.
+> No backward compatibility while it is still v0.0.x.
 > This project is still experimental: behavior may be unstable, features may change or be removed without notice, and updates may introduce regressions.
 
 Minimal, mobile-friendly VNC viewer using `@novnc/novnc` for the RFB protocol with a custom UI.

@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "guac-vnc",
+      "name": "mywebdesk",
       "dependencies": {
         "@novnc/novnc": "1.7.0",
         "express": "^5.2.1",

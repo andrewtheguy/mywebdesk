@@ -1,12 +1,13 @@
-# guac-vnc
+# mywebdesk
 
 > [!WARNING]
-> This program is meant for the original developer's personal use; no backward compatibility, user-friendliness, or multi-user security is required.
+> This project is meant for a single user.
+> No backward compatibility while it is still v0.0.x.
 > This project is still experimental: behavior may be unstable, features may change or be removed without notice, and updates may introduce regressions.
 
 Minimal, mobile-friendly VNC viewer using `@novnc/novnc` for the RFB protocol with a custom UI.
 
-## Pain points solved
+## Features
 
 - **1:1 device-pixel rendering** — the remote desktop is resized to exactly `viewport × devicePixelRatio` and rendered 1:1 in device pixels (see below)
 - **Visible menu toggle** — FAB button always visible (no Ctrl+Alt+Shift or swipe needed)
@@ -23,7 +24,7 @@ Express + ws (dumb WebSocket-to-TCP byte pipe, port 18890)
 TigerVNC (port 5901)
 ```
 
-Rendering, resize, and input all run in the browser; the server authenticates the WebSocket upgrade, performs the RFB security handshake with the VNC server (so `VNC_PASSWORD` never leaves the server), and then pipes bytes. No guacd, no RDP.
+Rendering, resize, and input all run in the browser; the server authenticates the WebSocket upgrade, performs the RFB security handshake with the VNC server (so `VNC_PASSWORD` never leaves the server), and then pipes bytes. No extra protocol daemon, no RDP.
 
 ### VNC authentication
 
@@ -37,32 +38,32 @@ bun install
 bun run dev            # start the dev server + Vite
 ```
 
-Open http://localhost:5173 — Vite proxies `/vnc/ws` and `/api` to the Express server on `GUAC_SERVER_PORT` (default `18890`).
+Open http://localhost:5173 — Vite proxies `/vnc/ws` and `/api` to the Express server on `MYWEBDESK_SERVER_PORT` (default `18890`).
 
 ## Install (prebuilt binary)
 
 Single self-contained executable (Bun runtime + frontend embedded); no Bun or
 `node_modules` needed at runtime. Downloads from
-[Releases](https://github.com/andrewtheguy/guac-vnc/releases):
+[Releases](https://github.com/andrewtheguy/mywebdesk/releases):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrewtheguy/guac-vnc/main/install.sh | bash
+curl -fsSL https://andrewtheguy.github.io/mywebdesk/install.sh | bash
 ```
 
-Installs to `~/.local/bin/guac-vnc`. Supported platforms: Linux (amd64, arm64),
+Installs to `~/.local/bin/mywebdesk`. Supported platforms: Linux (amd64, arm64),
 macOS (arm64). The binary does **not** read a `.env` — pass config as real env
 vars:
 
 ```bash
 SITE_PASSWD=... VNC_HOST=127.0.0.1 VNC_PORT=5901 VNC_PASSWORD=... \
-  PORT=18890 HOST=127.0.0.1 guac-vnc
+  PORT=18890 HOST=127.0.0.1 mywebdesk
 ```
 
 ## Build the binary yourself
 
 ```bash
 bun install
-bun run compile        # -> bin/guac-vnc (current platform)
+bun run compile        # -> bin/mywebdesk (current platform)
 ```
 
 ## Production (from source)
@@ -82,7 +83,7 @@ Serves the built frontend from `dist/` on port 18890.
 | `VNC_HOST` | `127.0.0.1` | VNC server hostname |
 | `VNC_PORT` | `5901` | VNC server port |
 | `VNC_PASSWORD` | | VNC server password (used server-side; never sent to the client) |
-| `GUAC_SERVER_PORT` | `18890` | Dev server listen port (also used by Vite proxy target) |
+| `MYWEBDESK_SERVER_PORT` | `18890` | Dev server listen port (also used by Vite proxy target) |
 | `PORT` | `18890` | Production server listen port override |
 | `HOST` | `127.0.0.1` | Server bind address |
 

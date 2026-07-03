@@ -2,7 +2,7 @@ import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-const guacServerPort = process.env.GUAC_SERVER_PORT || "18890";
+const mywebdeskServerPort = process.env.MYWEBDESK_SERVER_PORT || "18890";
 
 export default defineConfig({
   plugins: [react()],
@@ -16,8 +16,8 @@ export default defineConfig({
   server: {
     allowedHosts: [".trycloudflare.com"],
     proxy: {
-      "/vnc/ws": { target: `ws://localhost:${guacServerPort}`, ws: true },
-      "/api": { target: `http://localhost:${guacServerPort}` },
+      "/vnc/ws": { target: `ws://localhost:${mywebdeskServerPort}`, ws: true },
+      "/api": { target: `http://localhost:${mywebdeskServerPort}` },
     },
   },
 });

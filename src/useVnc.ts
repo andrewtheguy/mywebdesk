@@ -529,8 +529,7 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       }
 
       function sendHorizontalScrollTick(direction: "left" | "right"): void {
-        // RFB has native horizontal wheel buttons (6/7), unlike Guacamole's
-        // old Shift+Wheel emulation.
+        // RFB has native horizontal wheel buttons (6/7), so send them directly.
         const cursor = getCurrentCursorPosition();
         rfb.sendPointer(
           cursor.x,

@@ -17,7 +17,7 @@ import { attachVncProxy, closeAll } from "./vncProxy.js";
 declare const BUILD_VERSION: string;
 const VERSION = typeof BUILD_VERSION !== "undefined" ? BUILD_VERSION : "dev";
 
-// Print version and exit before touching config, so `guac-vnc --version` works
+// Print version and exit before touching config, so `mywebdesk --version` works
 // with no env set (install.sh uses this to smoke-test the downloaded binary).
 if (process.argv.includes("--version") || process.argv.includes("-v")) {
   console.log(VERSION);
@@ -31,8 +31,8 @@ app.use(express.json());
 const isProduction = process.env.NODE_ENV === "production";
 const PORT = Number.parseInt(
   isProduction
-    ? process.env.PORT || process.env.GUAC_SERVER_PORT || "18890"
-    : process.env.GUAC_SERVER_PORT || "18890",
+    ? process.env.PORT || process.env.MYWEBDESK_SERVER_PORT || "18890"
+    : process.env.MYWEBDESK_SERVER_PORT || "18890",
   10,
 );
 const HOST = process.env.HOST || "127.0.0.1";
@@ -175,7 +175,7 @@ if (isProduction) {
 }
 
 const server = app.listen(PORT, HOST, () => {
-  console.log(`guac-vnc ${VERSION} running on http://${HOST}:${PORT}`);
+  console.log(`mywebdesk ${VERSION} running on http://${HOST}:${PORT}`);
 });
 
 attachVncProxy(server, {

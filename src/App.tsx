@@ -4,7 +4,7 @@ import {
   type ConnectionConfig,
   parseConnectionConfig,
 } from "./connectionConfig";
-import { SoftKeyboardPanel } from "./SoftKeyboard";
+import { SoftKeyboardPanel } from "./SoftKeyboardPanel";
 import { useVnc } from "./useVnc";
 
 const FAB_SIZE = 36;

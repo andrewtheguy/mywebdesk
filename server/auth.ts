@@ -3,7 +3,7 @@ export { initHtpasswd, verifyCredentials } from "./htpasswd.js";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const PURGE_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
-const SESSION_COOKIE_NAME = "guac_session";
+const SESSION_COOKIE_NAME = "mywebdesk_session";
 
 interface SessionData {
   username: string;

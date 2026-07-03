@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# guac-vnc installer for Linux and Mac
-# Downloads latest binary from: https://github.com/andrewtheguy/guac-vnc/releases
+# mywebdesk installer for Linux and Mac
+# Downloads latest binary from: https://github.com/andrewtheguy/mywebdesk/releases
 #
 # Usage: ./install.sh [RELEASE_TAG]
 # Or set RELEASE_TAG environment variable
@@ -9,7 +9,7 @@
 set -e
 
 REPO_OWNER="andrewtheguy"
-REPO_NAME="guac-vnc"
+REPO_NAME="mywebdesk"
 DOWNLOAD_ONLY=false
 
 # Color output
@@ -186,8 +186,8 @@ detect_arch() {
 
 # Map OS and architecture to binary name
 get_binary_name() {
-    BINARY_NAME="guac-vnc-${OS}-${ARCH}"
-    INSTALL_NAME="guac-vnc"
+    BINARY_NAME="mywebdesk-${OS}-${ARCH}"
+    INSTALL_NAME="mywebdesk"
 
     # macOS only ships an arm64 build.
     if [ "$OS" = "darwin" ] && [ "$ARCH" != "arm64" ]; then
@@ -339,7 +339,7 @@ download_and_install() {
 
         if [ -n "$profile" ]; then
             print_warn "${target_dir} is not in your current PATH, but is configured in your profile."
-            print_warn "To use guac-vnc now, reload your profile:"
+            print_warn "To use mywebdesk now, reload your profile:"
             echo ""
             echo "    source $profile"
             echo ""
@@ -359,7 +359,7 @@ download_and_install() {
 show_usage() {
     echo "Usage: $0 [OPTIONS] [RELEASE_TAG]"
     echo ""
-    echo "Download and install guac-vnc binary"
+    echo "Download and install mywebdesk binary"
     echo ""
     echo "Options:"
     echo "  --download-only  Download binary to current directory without installing"
@@ -369,7 +369,7 @@ show_usage() {
     echo "  RELEASE_TAG      GitHub release tag to download (default: latest)"
     echo ""
     echo "Examples:"
-    echo "  $0                       # Install latest guac-vnc"
+    echo "  $0                       # Install latest mywebdesk"
     echo "  $0 v0.0.1                # Install specific release"
     echo "  $0 --download-only       # Download latest to current directory"
     echo ""
@@ -386,9 +386,9 @@ check_privileges() {
 # Main installation function
 install() {
     if [ "$DOWNLOAD_ONLY" = true ]; then
-        print_info "guac-vnc downloader"
+        print_info "mywebdesk downloader"
     else
-        print_info "guac-vnc installer"
+        print_info "mywebdesk installer"
     fi
     print_info "Release: ${RELEASE_TAG}"
     print_info "Repository: ${REPO_OWNER}/${REPO_NAME}"
@@ -422,7 +422,7 @@ install() {
     else
         download_and_install
         print_info "Installation completed successfully!"
-        print_info "You can now run 'guac-vnc' from your terminal."
+        print_info "You can now run 'mywebdesk' from your terminal."
     fi
 }
 
@@ -431,9 +431,9 @@ main() {
     parse_args "$@"
 
     if [ "$DOWNLOAD_ONLY" = true ]; then
-        print_info "Starting guac-vnc download..."
+        print_info "Starting mywebdesk download..."
     else
-        print_info "Starting guac-vnc installation..."
+        print_info "Starting mywebdesk installation..."
         check_privileges
     fi
 

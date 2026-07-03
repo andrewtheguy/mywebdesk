@@ -1,12 +1,12 @@
 # mywebdesk
 
 > [!WARNING]
-> This program is meant for the original developer's personal use; no backward compatibility, user-friendliness, or multi-user security is required.
+> This project is meant for a single user, and no backward compatibility is required.
 > This project is still experimental: behavior may be unstable, features may change or be removed without notice, and updates may introduce regressions.
 
 Minimal, mobile-friendly VNC viewer using `@novnc/novnc` for the RFB protocol with a custom UI.
 
-## Pain points solved
+## Features
 
 - **1:1 device-pixel rendering** — the remote desktop is resized to exactly `viewport × devicePixelRatio` and rendered 1:1 in device pixels (see below)
 - **Visible menu toggle** — FAB button always visible (no Ctrl+Alt+Shift or swipe needed)
@@ -46,7 +46,7 @@ Single self-contained executable (Bun runtime + frontend embedded); no Bun or
 [Releases](https://github.com/andrewtheguy/mywebdesk/releases):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrewtheguy/mywebdesk/main/install.sh | bash
+curl -fsSL https://andrewtheguy.github.io/mywebdesk/install.sh | bash
 ```
 
 Installs to `~/.local/bin/mywebdesk`. Supported platforms: Linux (amd64, arm64),

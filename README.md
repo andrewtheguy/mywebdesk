@@ -23,7 +23,11 @@ Express + ws (dumb WebSocket-to-TCP byte pipe, port 18890)
 TigerVNC (port 5901)
 ```
 
-All protocol logic (decoding, resize, input, VNC auth) runs in the browser; the server only authenticates the WebSocket upgrade and pipes bytes. No guacd, no RDP.
+Rendering, resize, and input all run in the browser; the server authenticates the WebSocket upgrade, performs the RFB security handshake with the VNC server (so `VNC_PASSWORD` never leaves the server), and then pipes bytes. No guacd, no RDP.
+
+### VNC authentication
+
+The proxy handles the RFB security phase itself: it answers TigerVNC's VncAuth DES challenge with `VNC_PASSWORD` server-side, presents security type *None* to the browser, then splices the two byte streams. The VNC password is therefore never sent to the client and never appears in any client-visible response.
 
 ## Development
 
@@ -51,7 +55,7 @@ Serves the built frontend from `dist/` on port 18890.
 | `SITE_PASSWD` | *(required)* | Base64-encoded `username:bcrypt_hash` (see below) |
 | `VNC_HOST` | `127.0.0.1` | VNC server hostname |
 | `VNC_PORT` | `5901` | VNC server port |
-| `VNC_PASSWORD` | | VNC server password (sent to the authenticated browser, which performs VNC auth) |
+| `VNC_PASSWORD` | | VNC server password (used server-side; never sent to the client) |
 | `GUAC_SERVER_PORT` | `18890` | Dev server listen port (also used by Vite proxy target) |
 | `PORT` | `18890` | Production server listen port override |
 | `HOST` | `127.0.0.1` | Server bind address |

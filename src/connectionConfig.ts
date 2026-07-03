@@ -1,7 +1,6 @@
 export interface ConnectionConfig {
   host: string;
   port: string;
-  vncPassword: string;
 }
 
 // Validates the /api/app/config response shape; throws with a clear message
@@ -12,10 +11,9 @@ export function parseConnectionConfig(payload: unknown): ConnectionConfig {
     throw new Error("Invalid config response: expected object payload");
   }
 
-  const { host, port, vncPassword } = payload as {
+  const { host, port } = payload as {
     host?: unknown;
     port?: unknown;
-    vncPassword?: unknown;
   };
 
   if (typeof host !== "string" || host.trim().length === 0) {
@@ -38,6 +36,5 @@ export function parseConnectionConfig(payload: unknown): ConnectionConfig {
   return {
     host: host.trim(),
     port: normalizedPort,
-    vncPassword: typeof vncPassword === "string" ? vncPassword : "",
   };
 }

@@ -88,9 +88,6 @@ app.get("/api/app/config", (_req, res) => {
   res.json({
     host: VNC_HOST,
     port: VNC_PORT,
-    // Single-user tool behind site auth; the browser performs VNC auth
-    // directly, so it needs the password.
-    vncPassword: VNC_PASSWORD,
   });
 });
 
@@ -151,7 +148,11 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Server running on http://${HOST}:${PORT}`);
 });
 
-attachVncProxy(server, { vncHost: VNC_HOST, vncPort: VNC_PORT });
+attachVncProxy(server, {
+  vncHost: VNC_HOST,
+  vncPort: VNC_PORT,
+  vncPassword: VNC_PASSWORD,
+});
 
 const activeHttpSockets = new Set<Socket>();
 server.on("connection", (socket) => {

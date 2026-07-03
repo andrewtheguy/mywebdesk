@@ -1,9 +1,6 @@
 import Keyboard from "@novnc-core/input/keyboard.js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  type ConnectionConfig,
-  parseConnectionConfig,
-} from "./connectionConfig";
+import { parseConnectionConfig } from "./connectionConfig";
 import { HiDpiRFB } from "./HiDpiRFB";
 import { computeResizeTarget, updateNativeDisplayFloor } from "./resizeSizing";
 import { type MouseButtonState, toRfbButtonMask } from "./rfbInput";
@@ -127,8 +124,8 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       setState("connecting");
       setError(null);
 
-      // Fetch config from server
-      let config: ConnectionConfig;
+      // Pre-flight: verify auth and config shape before opening the tunnel.
+      // The proxy holds the VNC target and password server-side.
       try {
         const res = await fetch("/api/app/config");
         if (!res.ok) {
@@ -142,7 +139,7 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
           setState("error");
           return;
         }
-        config = parseConnectionConfig(await res.json());
+        parseConnectionConfig(await res.json());
       } catch (err) {
         if (connectionId !== connectionIdRef.current) return;
         setError(
@@ -177,6 +174,10 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
           setError("Session taken over by another client");
         } else if (event.reason === "vnc-unreachable") {
           setError("Unable to reach the configured VNC target");
+        } else if (event.reason === "vnc-handshake-failed") {
+          setError(
+            "VNC handshake failed on the server (check VNC_PASSWORD and the server log)",
+          );
         }
       });
 
@@ -191,9 +192,10 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       overlayEl.style.cursor = "none";
       overlayEl.style.touchAction = "none";
 
-      const rfb = new HiDpiRFB(containerEl, ws, {
-        credentials: { password: config.vncPassword },
-      });
+      // No credentials: the server-side proxy answers the VNC auth challenge
+      // itself and presents security type None to the browser, so the VNC
+      // password never reaches the client.
+      const rfb = new HiDpiRFB(containerEl, ws);
       rfbRef.current = rfb;
       rfb.focusOnClick = false;
       containerEl.appendChild(overlayEl);

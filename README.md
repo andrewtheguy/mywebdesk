@@ -39,7 +39,33 @@ bun run dev            # start the dev server + Vite
 
 Open http://localhost:5173 — Vite proxies `/vnc/ws` and `/api` to the Express server on `GUAC_SERVER_PORT` (default `18890`).
 
-## Production
+## Install (prebuilt binary)
+
+Single self-contained executable (Bun runtime + frontend embedded); no Bun or
+`node_modules` needed at runtime. Downloads from
+[Releases](https://github.com/andrewtheguy/guac-vnc/releases):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andrewtheguy/guac-vnc/main/install.sh | bash
+```
+
+Installs to `~/.local/bin/guac-vnc`. Supported platforms: Linux (amd64, arm64),
+macOS (arm64). The binary does **not** read a `.env` — pass config as real env
+vars:
+
+```bash
+SITE_PASSWD=... VNC_HOST=127.0.0.1 VNC_PORT=5901 VNC_PASSWORD=... \
+  PORT=18890 HOST=127.0.0.1 guac-vnc
+```
+
+## Build the binary yourself
+
+```bash
+bun install
+bun run compile        # -> bin/guac-vnc (current platform)
+```
+
+## Production (from source)
 
 ```bash
 bun run build

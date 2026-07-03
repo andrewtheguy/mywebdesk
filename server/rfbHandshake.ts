@@ -66,6 +66,14 @@ export function createByteReader(
   return {
     read(n: number): Promise<Buffer> {
       return new Promise((resolve, reject) => {
+        // Single-reader contract: overlapping reads would orphan the earlier
+        // Promise. Fail fast instead of silently dropping it.
+        if (pending) {
+          reject(
+            new HandshakeError("overlapping read() on a single-reader stream"),
+          );
+          return;
+        }
         pending = { n, resolve, reject };
         pump();
       });

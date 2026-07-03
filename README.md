@@ -72,7 +72,21 @@ On non-touch devices the client requests a remote desktop of exactly `viewport C
 Requirements on the VNC server side:
 
 - **TigerVNC (Xvnc)** with `AcceptSetDesktopSize` enabled (the default) so client resize requests are honored.
-- The desktop environment must scale its UI 2× or everything is crisp but tiny. For Xfce: `xfconf-query -c xsettings -p /Xft/DPI -s 192` (plus cursor size/theme scaling to taste). Use a 1× profile when connecting from non-HiDPI clients — the session DPI is global.
+- The desktop environment must scale its UI 2× or everything is crisp but tiny. The session scale is global, so switch it when moving between HiDPI and 1× clients.
+
+Xfce 2×/1× toggle (run inside the VNC session, or with `DISPLAY=:1` from a shell):
+
+```bash
+# 2x (Retina)
+xfconf-query -c xsettings -p /Xft/DPI -s 192
+xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s 48 --create -t int
+
+# back to 1x (iPad/phone or non-HiDPI)
+xfconf-query -c xsettings -p /Xft/DPI -s 96
+xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s 24 --create -t int
+```
+
+`/Xft/DPI` scales fonts (and most UI with them) live, no logout needed. For full widget scaling there is also `xfconf-query -c xsettings -p /Gdk/WindowScalingFactor -s 2` (Appearance → Window Scaling), but note it multiplies with the DPI setting and some apps need a restart — start with DPI alone.
 
 Touch devices (iPad/phone) keep 1× sizing and rely on pinch-zoom instead, same as before.
 

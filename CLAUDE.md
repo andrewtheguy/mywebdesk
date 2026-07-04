@@ -17,7 +17,7 @@ Keep the current architecture unless explicitly asked to change it:
 
 - Client: React + Vite + TypeScript
 - Server: Bun runtime + Express + `ws`
-- Remote protocol: RFB (VNC) via `@novnc/novnc` in the browser; the server is a dumb WebSocket↔TCP byte pipe
+- Remote protocol: RFB (VNC) via a vendored fork of noVNC 1.7.0 in the browser (`src/vendor/novnc`, MPL-2.0 — keep file headers, record changes in its ORIGIN.md); the server is a dumb WebSocket↔TCP byte pipe
 
 ## Lint & Type Check
 

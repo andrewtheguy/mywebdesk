@@ -1,8 +1,8 @@
-// Hand-written type stubs for @novnc/novnc (no official types).
+// Hand-written type stubs for the vendored noVNC fork (src/vendor/novnc).
 // Includes the internal underscore-prefixed surface that HiDpiRFB.ts relies
-// on; that surface is only valid for the exact pinned noVNC version (1.7.0).
+// on.
 
-declare module "@novnc/novnc" {
+declare module "@novnc-core/rfb.js" {
   export interface RFBCredentials {
     username?: string;
     password?: string;

@@ -1,4 +1,4 @@
-import RFB from "@novnc/novnc";
+import RFB from "@novnc-core/rfb.js";
 
 // RFB pseudo-encoding constants (stable protocol values, mirrored from
 // noVNC's core/encodings.js).

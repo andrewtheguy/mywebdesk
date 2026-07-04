@@ -1,5 +1,9 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.15/schema.json",
+  "files": {
+    // Vendored noVNC fork keeps upstream formatting/style (MPL-2.0 sources).
+    "includes": ["**", "!src/vendor"]
+  },
   "vcs": {
     "enabled": true,
     "clientKind": "git",

@@ -5,7 +5,7 @@
 > No backward compatibility while it is still v0.0.x.
 > This project is still experimental: behavior may be unstable, features may change or be removed without notice, and updates may introduce regressions.
 
-Minimal, mobile-friendly VNC viewer using `@novnc/novnc` for the RFB protocol with a custom UI.
+Minimal, mobile-friendly VNC viewer using a vendored fork of noVNC 1.7.0 (`src/vendor/novnc`) for the RFB protocol with a custom UI.
 
 ## Features
 
@@ -17,7 +17,7 @@ Minimal, mobile-friendly VNC viewer using `@novnc/novnc` for the RFB protocol wi
 ## Architecture
 
 ```
-Browser (Vite + React + @novnc/novnc RFB client)
+Browser (Vite + React + vendored noVNC RFB client)
     ↓ WebSocket (/vnc/ws, binary)
 Express + ws (dumb WebSocket-to-TCP byte pipe, port 18890)
     ↓ Raw TCP (RFB)
@@ -100,7 +100,7 @@ The output is a ready-to-paste `.env` line (base64-encoded `username:bcrypt_hash
 
 This is a workaround that helps, not full HiDPI support: the client can render the framebuffer crisply, but true HiDPI depends on the remote desktop environment scaling its own UI, which is a global session setting with the limitations noted below.
 
-On non-touch devices the client requests a remote desktop of exactly `viewport CSS size × devicePixelRatio` via the RFB SetDesktopSize extension, then scales the canvas down by `1/devicePixelRatio` so one framebuffer pixel maps to one device pixel — pixel-crisp on Retina. (Stock noVNC sizes in CSS pixels; a small `RFB` subclass overrides its screen-size calculation, pinned to noVNC 1.7.0.)
+On non-touch devices the client requests a remote desktop of exactly `viewport CSS size × devicePixelRatio` via the RFB SetDesktopSize extension, then scales the canvas down by `1/devicePixelRatio` so one framebuffer pixel maps to one device pixel — pixel-crisp on Retina. (Stock noVNC sizes in CSS pixels; a small `RFB` subclass over the vendored fork overrides its screen-size calculation.)
 
 Requirements on the VNC server side:
 

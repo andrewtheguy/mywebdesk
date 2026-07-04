@@ -5,7 +5,6 @@
  *
  * See README.md for usage and integration instructions.
  */
-// @ts-nocheck
 
 /*
  * Logging/debug routines. The level is fixed at 'warn' (nothing ever
@@ -14,8 +13,10 @@
  */
 
 /* eslint-disable no-console */
-export const Debug = () => {};
-export const Info = () => {};
+type LogFunction = (...args: unknown[]) => void;
+
+export const Debug: LogFunction = () => {};
+export const Info: LogFunction = () => {};
 export const Warn = console.warn.bind(console);
 export const Error = console.error.bind(console);
 /* eslint-enable no-console */

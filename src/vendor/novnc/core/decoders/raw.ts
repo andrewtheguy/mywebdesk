@@ -6,14 +6,24 @@
  * See README.md for usage and integration instructions.
  *
  */
-// @ts-nocheck
+
+interface RawSock {
+    rQwait(msg: string, num: number): boolean;
+    rQshiftBytes(len: number, copy?: boolean): Uint8Array;
+}
+
+interface RawDisplay {
+    blitImage(x: number, y: number, width: number, height: number, data: Uint8Array, offset: number): void;
+}
 
 export default class RawDecoder {
+    private _lines: number;
+
     constructor() {
         this._lines = 0;
     }
 
-    decodeRect(x, y, width, height, sock, display, depth) {
+    decodeRect(x: number, y: number, width: number, height: number, sock: RawSock, display: RawDisplay, depth: number): boolean {
         if ((width === 0) || (height === 0)) {
             return true;
         }

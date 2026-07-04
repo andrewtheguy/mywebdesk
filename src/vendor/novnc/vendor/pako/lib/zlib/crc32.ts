@@ -1,12 +1,11 @@
-// @ts-nocheck
 // Note: we can't get significant speed boost here.
 // So write code to minimize size - no pregenerated tables
 // and array tools dependencies.
 
 
 // Use ordinary array, since untyped makes no boost here
-export default function makeTable() {
-  var c, table = [];
+export default function makeTable(): number[] {
+  var c, table: number[] = [];
 
   for (var n = 0; n < 256; n++) {
     c = n;
@@ -23,7 +22,7 @@ export default function makeTable() {
 var crcTable = makeTable();
 
 
-function crc32(crc, buf, len, pos) {
+function crc32(crc: number, buf: ArrayLike<number>, len: number, pos: number): number {
   var t = crcTable,
       end = pos + len;
 

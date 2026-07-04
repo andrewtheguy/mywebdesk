@@ -148,3 +148,10 @@ TypeScript migration:
 - Removed `// @ts-nocheck` from the constant/data modules and added focused
   table types: `core/encodings.ts`, `core/input/{domkeytable,fixedkeys,keysym,
   keysymdef,vkeys,xtscancodes}.ts`, and `vendor/pako/lib/zlib/messages.ts`.
+- Removed `// @ts-nocheck` from the next small helper modules and added narrow
+  signatures/local interfaces: `core/util/browser.ts`,
+  `core/util/events.ts`, `core/util/int.ts`, `core/util/logging.ts`,
+  `core/util/strings.ts`, `core/decoders/copyrect.ts`,
+  `core/decoders/raw.ts`, `vendor/pako/lib/utils/common.ts`,
+  `vendor/pako/lib/zlib/adler32.ts`, `vendor/pako/lib/zlib/crc32.ts`, and
+  `vendor/pako/lib/zlib/zstream.ts`.

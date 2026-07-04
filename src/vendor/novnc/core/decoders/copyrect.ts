@@ -6,10 +6,18 @@
  * See README.md for usage and integration instructions.
  *
  */
-// @ts-nocheck
+
+interface CopyRectSock {
+    rQwait(msg: string, num: number): boolean;
+    rQshift16(): number;
+}
+
+interface CopyRectDisplay {
+    copyImage(oldX: number, oldY: number, newX: number, newY: number, width: number, height: number): void;
+}
 
 export default class CopyRectDecoder {
-    decodeRect(x, y, width, height, sock, display, depth) {
+    decodeRect(x: number, y: number, width: number, height: number, sock: CopyRectSock, display: CopyRectDisplay, depth: number): boolean {
         if (sock.rQwait("COPYRECT", 4)) {
             return false;
         }

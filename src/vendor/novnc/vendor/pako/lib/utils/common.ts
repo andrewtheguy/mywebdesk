@@ -1,15 +1,17 @@
-// @ts-nocheck
+type TypedBuffer = Uint8Array | Uint16Array | Int32Array;
+type BufferLike = TypedBuffer | number[];
+
 // reduce buffer size, avoiding mem copy
-export function shrinkBuf (buf, size) {
+export function shrinkBuf<T extends BufferLike> (buf: T, size: number): T {
   if (buf.length === size) { return buf; }
-  if (buf.subarray) { return buf.subarray(0, size); }
+  if ("subarray" in buf) { return buf.subarray(0, size) as T; }
   buf.length = size;
   return buf;
 };
 
 
-export function arraySet (dest, src, src_offs, len, dest_offs) {
-  if (src.subarray && dest.subarray) {
+export function arraySet (dest: BufferLike, src: BufferLike, src_offs: number, len: number, dest_offs: number): void {
+  if ("subarray" in src && "set" in dest) {
     dest.set(src.subarray(src_offs, src_offs + len), dest_offs);
     return;
   }
@@ -20,7 +22,7 @@ export function arraySet (dest, src, src_offs, len, dest_offs) {
 }
 
 // Join array of chunks to single array.
-export function flattenChunks (chunks) {
+export function flattenChunks (chunks: Uint8Array[]): Uint8Array {
   var i, l, len, pos, chunk, result;
 
   // calculate data length

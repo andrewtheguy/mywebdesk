@@ -1,9 +1,8 @@
-// @ts-nocheck
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
 // It doesn't worth to make additional optimizationa as in original.
 // Small size is preferable.
 
-export default function adler32(adler, buf, len, pos) {
+export default function adler32(adler: number, buf: ArrayLike<number>, len: number, pos: number): number {
   var s1 = (adler & 0xffff) |0,
       s2 = ((adler >>> 16) & 0xffff) |0,
       n = 0;

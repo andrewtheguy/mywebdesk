@@ -5,13 +5,12 @@
  *
  * See README.md for usage and integration instructions.
  */
-// @ts-nocheck
 
 /*
  * Event helpers
  */
 
-export function stopEvent(e) {
+export function stopEvent(e: Event): void {
     e.stopPropagation();
     e.preventDefault();
 }

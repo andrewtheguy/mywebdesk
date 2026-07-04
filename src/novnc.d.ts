@@ -1,58 +1,46 @@
-// Hand-written type stubs for @novnc/novnc (no official types).
-// Includes the internal underscore-prefixed surface that HiDpiRFB.ts relies
-// on; that surface is only valid for the exact pinned noVNC version (1.7.0).
+// Hand-written type declarations for the vendored noVNC fork
+// (src/vendor/novnc, reached via the @novnc-core vite alias). Only the
+// fork's public surface is declared; keep this in sync with core/rfb.js.
 
-declare module "@novnc/novnc" {
-  export interface RFBCredentials {
-    username?: string;
-    password?: string;
-    target?: string;
-  }
-
-  export interface RFBOptions {
-    shared?: boolean;
-    credentials?: RFBCredentials;
-    repeaterID?: string;
-    wsProtocols?: string[];
+declare module "@novnc-core/rfb.js" {
+  export interface FbSize {
+    width: number;
+    height: number;
   }
 
   export interface RFBEventMap {
     connect: CustomEvent<Record<string, never>>;
     disconnect: CustomEvent<{ clean: boolean }>;
-    credentialsrequired: CustomEvent<{ types: string[] }>;
     securityfailure: CustomEvent<{ status: number; reason?: string }>;
     desktopname: CustomEvent<{ name: string }>;
     clipboard: CustomEvent<{ text: string }>;
+    fbresize: CustomEvent<FbSize>;
   }
 
-  export type NoVncSocket = unknown;
-
   export default class RFB {
-    constructor(
-      target: HTMLElement,
-      urlOrChannel: string | WebSocket,
-      options?: RFBOptions,
-    );
+    constructor(target: HTMLElement, channel: WebSocket);
 
     viewOnly: boolean;
     focusOnClick: boolean;
-    clipViewport: boolean;
-    dragViewport: boolean;
-    scaleViewport: boolean;
     resizeSession: boolean;
-    showDotCursor: boolean;
-    background: string;
-    qualityLevel: number;
-    compressionLevel: number;
-    readonly capabilities: { power: boolean };
+
+    // When set, returns the desired framebuffer size in device pixels and
+    // becomes the sole source for setDesktopSize requests.
+    computeTargetSize: (() => FbSize) | null;
+
+    readonly connected: boolean;
+    readonly fbSize: FbSize;
+    readonly canvasElement: HTMLCanvasElement;
+    readonly screenElement: HTMLDivElement;
 
     disconnect(): void;
-    sendCredentials(creds: RFBCredentials): void;
-    sendCtrlAltDel(): void;
     sendKey(keysym: number, code: string | null, down?: boolean): void;
     focus(options?: FocusOptions): void;
     blur(): void;
     clipboardPasteFrom(text: string): void;
+    setBaseScale(scale: number): void;
+    requestResize(): void;
+    sendPointer(x: number, y: number, buttonMask: number): void;
 
     addEventListener<K extends keyof RFBEventMap>(
       type: K,
@@ -65,30 +53,6 @@ declare module "@novnc/novnc" {
     ): void;
     removeEventListener(type: string, listener: (ev: Event) => void): void;
     dispatchEvent(event: Event): boolean;
-
-    // ----- Internal API surface (valid for noVNC 1.7.0 only) -----
-    protected _screen: HTMLDivElement;
-    protected _canvas: HTMLCanvasElement;
-    protected _display: { scale: number };
-    protected _sock: NoVncSocket;
-    protected _fbWidth: number;
-    protected _fbHeight: number;
-    protected _rfbConnectionState:
-      | ""
-      | "connecting"
-      | "connected"
-      | "disconnecting"
-      | "disconnected";
-    protected _screenSize(): { w: number; h: number };
-    protected _updateScale(): void;
-    protected _requestRemoteResize(): void;
-    protected _resize(width: number, height: number): void;
-    protected _sendEncodings(): void;
-
-    static messages: {
-      pointerEvent(sock: NoVncSocket, x: number, y: number, mask: number): void;
-      clientEncodings(sock: NoVncSocket, encodings: number[]): void;
-    };
   }
 }
 

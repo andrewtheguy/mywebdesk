@@ -8,9 +8,9 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // @novnc/novnc only exports core/rfb.js; alias past the exports map for
-      // deep imports (keyboard handling).
-      "@novnc-core": path.resolve(__dirname, "node_modules/@novnc/novnc/core"),
+      // Vendored fork of noVNC 1.7.0 (see src/vendor/novnc/ORIGIN.md). The
+      // alias keeps specifiers non-relative so src/novnc.d.ts can type them.
+      "@novnc-core": path.resolve(__dirname, "src/vendor/novnc/core"),
     },
   },
   server: {

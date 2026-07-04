@@ -6,16 +6,43 @@
  * See README.md for usage and integration instructions.
  */
 
-import * as Log from './util/logging.js';
-import Base64 from "./base64.js";
-import { toSigned32bit } from './util/int.js';
+import * as Log from './util/logging';
+
+// A deferred draw operation queued for in-order rendering. Discriminated on
+// `type` so _scanRenderQ() narrows the payload per case.
+type RenderAction =
+    | { type: 'flip' }
+    | { type: 'copy'; oldX: number; oldY: number; x: number; y: number; width: number; height: number }
+    | { type: 'fill'; x: number; y: number; width: number; height: number; color: number[] | Uint8Array }
+    | { type: 'blit'; data: Uint8Array; x: number; y: number; width: number; height: number }
+    | { type: 'img'; img: HTMLImageElement; x: number; y: number; width: number; height: number };
+
+declare global {
+    // Expando the render queue hangs on a pending <img> so its 'load' handler
+    // (which runs with `this` bound to the image) can reach the Display.
+    interface HTMLImageElement {
+        _noVNCDisplay?: Display;
+    }
+}
 
 export default class Display {
-    constructor(target) {
-        this._drawCtx = null;
+    private _target: HTMLCanvasElement;
+    private _targetCtx!: CanvasRenderingContext2D;
+    private _backbuffer!: HTMLCanvasElement;
+    private _drawCtx!: CanvasRenderingContext2D;
+    private _renderQ: RenderAction[];
+    private _flushPromise: Promise<void> | null;
+    private _flushResolve: (() => void) | null;
+    private _fbWidth: number;
+    private _fbHeight: number;
+    private _prevDrawStyle: string;
+    private _damageBounds!: { left: number; top: number; right: number; bottom: number };
+    private _scale!: number;
 
+    constructor(target: HTMLCanvasElement) {
         this._renderQ = [];  // queue drawing actions for in-oder rendering
         this._flushPromise = null;
+        this._flushResolve = null;
 
         // the full frame buffer (logical canvas) size
         this._fbWidth = 0;
@@ -40,14 +67,11 @@ export default class Display {
             throw new Error("no getContext method");
         }
 
-        this._targetCtx = this._target.getContext('2d');
-
-        // the visible canvas viewport (i.e. what actually gets seen)
-        this._viewportLoc = { 'x': 0, 'y': 0, 'w': this._target.width, 'h': this._target.height };
+        this._targetCtx = this._target.getContext('2d')!;
 
         // The hidden canvas, where we do the actual rendering
         this._backbuffer = document.createElement('canvas');
-        this._drawCtx = this._backbuffer.getContext('2d');
+        this._drawCtx = this._backbuffer.getContext('2d')!;
 
         this._damageBounds = { left: 0, top: 0,
                                right: this._backbuffer.width,
@@ -60,133 +84,18 @@ export default class Display {
         // ===== PROPERTIES =====
 
         this._scale = 1.0;
-        this._clipViewport = false;
     }
 
     // ===== PROPERTIES =====
 
-    get scale() { return this._scale; }
-    set scale(scale) {
+    get scale(): number { return this._scale; }
+    set scale(scale: number) {
         this._rescale(scale);
-    }
-
-    get clipViewport() { return this._clipViewport; }
-    set clipViewport(viewport) {
-        this._clipViewport = viewport;
-        // May need to readjust the viewport dimensions
-        const vp = this._viewportLoc;
-        this.viewportChangeSize(vp.w, vp.h);
-        this.viewportChangePos(0, 0);
-    }
-
-    get width() {
-        return this._fbWidth;
-    }
-
-    get height() {
-        return this._fbHeight;
     }
 
     // ===== PUBLIC METHODS =====
 
-    viewportChangePos(deltaX, deltaY) {
-        const vp = this._viewportLoc;
-        deltaX = Math.floor(deltaX);
-        deltaY = Math.floor(deltaY);
-
-        if (!this._clipViewport) {
-            deltaX = -vp.w;  // clamped later of out of bounds
-            deltaY = -vp.h;
-        }
-
-        const vx2 = vp.x + vp.w - 1;
-        const vy2 = vp.y + vp.h - 1;
-
-        // Position change
-
-        if (deltaX < 0 && vp.x + deltaX < 0) {
-            deltaX = -vp.x;
-        }
-        if (vx2 + deltaX >= this._fbWidth) {
-            deltaX -= vx2 + deltaX - this._fbWidth + 1;
-        }
-
-        if (vp.y + deltaY < 0) {
-            deltaY = -vp.y;
-        }
-        if (vy2 + deltaY >= this._fbHeight) {
-            deltaY -= (vy2 + deltaY - this._fbHeight + 1);
-        }
-
-        if (deltaX === 0 && deltaY === 0) {
-            return;
-        }
-        Log.Debug("viewportChange deltaX: " + deltaX + ", deltaY: " + deltaY);
-
-        vp.x += deltaX;
-        vp.y += deltaY;
-
-        this._damage(vp.x, vp.y, vp.w, vp.h);
-
-        this.flip();
-    }
-
-    viewportChangeSize(width, height) {
-
-        if (!this._clipViewport ||
-            typeof(width) === "undefined" ||
-            typeof(height) === "undefined") {
-
-            Log.Debug("Setting viewport to full display region");
-            width = this._fbWidth;
-            height = this._fbHeight;
-        }
-
-        width = Math.floor(width);
-        height = Math.floor(height);
-
-        if (width > this._fbWidth) {
-            width = this._fbWidth;
-        }
-        if (height > this._fbHeight) {
-            height = this._fbHeight;
-        }
-
-        const vp = this._viewportLoc;
-        if (vp.w !== width || vp.h !== height) {
-            vp.w = width;
-            vp.h = height;
-
-            const canvas = this._target;
-            canvas.width = width;
-            canvas.height = height;
-
-            // The position might need to be updated if we've grown
-            this.viewportChangePos(0, 0);
-
-            this._damage(vp.x, vp.y, vp.w, vp.h);
-            this.flip();
-
-            // Update the visible size of the target canvas
-            this._rescale(this._scale);
-        }
-    }
-
-    absX(x) {
-        if (this._scale === 0) {
-            return 0;
-        }
-        return toSigned32bit(x / this._scale + this._viewportLoc.x);
-    }
-
-    absY(y) {
-        if (this._scale === 0) {
-            return 0;
-        }
-        return toSigned32bit(y / this._scale + this._viewportLoc.y);
-    }
-
-    resize(width, height) {
+    resize(width: number, height: number): void {
         this._prevDrawStyle = "";
 
         this._fbWidth = width;
@@ -196,7 +105,7 @@ export default class Display {
         if (canvas.width !== width || canvas.height !== height) {
 
             // We have to save the canvas data since changing the size will clear it
-            let saveImg = null;
+            let saveImg: ImageData | null = null;
             if (canvas.width > 0 && canvas.height > 0) {
                 saveImg = this._drawCtx.getImageData(0, 0, canvas.width, canvas.height);
             }
@@ -213,27 +122,23 @@ export default class Display {
             }
         }
 
-        // Readjust the viewport as it may be incorrectly sized
-        // and positioned
-        const vp = this._viewportLoc;
-        this.viewportChangeSize(vp.w, vp.h);
-        this.viewportChangePos(0, 0);
-    }
+        // Keep the visible canvas the same size as the framebuffer (the
+        // fork has no viewport clipping; the app scales via CSS transform)
+        const target = this._target;
+        if (target.width !== width || target.height !== height) {
+            target.width = width;
+            target.height = height;
 
-    getImageData() {
-        return this._drawCtx.getImageData(0, 0, this.width, this.height);
-    }
+            this._damage(0, 0, width, height);
+            this.flip();
 
-    toDataURL(type, encoderOptions) {
-        return this._backbuffer.toDataURL(type, encoderOptions);
-    }
-
-    toBlob(callback, type, quality) {
-        return this._backbuffer.toBlob(callback, type, quality);
+            // Update the visible size of the target canvas
+            this._rescale(this._scale);
+        }
     }
 
     // Track what parts of the visible canvas that need updating
-    _damage(x, y, w, h) {
+    _damage(x: number, y: number, w: number, h: number): void {
         if (x < this._damageBounds.left) {
             this._damageBounds.left = x;
         }
@@ -250,7 +155,7 @@ export default class Display {
 
     // Update the visible canvas with the contents of the
     // rendering canvas
-    flip(fromQueue) {
+    flip(fromQueue?: boolean): void {
         if (this._renderQ.length !== 0 && !fromQueue) {
             this._renderQPush({
                 'type': 'flip'
@@ -261,25 +166,11 @@ export default class Display {
             let w = this._damageBounds.right - x;
             let h = this._damageBounds.bottom - y;
 
-            let vx = x - this._viewportLoc.x;
-            let vy = y - this._viewportLoc.y;
-
-            if (vx < 0) {
-                w += vx;
-                x -= vx;
-                vx = 0;
+            if ((x + w) > this._fbWidth) {
+                w = this._fbWidth - x;
             }
-            if (vy < 0) {
-                h += vy;
-                y -= vy;
-                vy = 0;
-            }
-
-            if ((vx + w) > this._viewportLoc.w) {
-                w = this._viewportLoc.w - vx;
-            }
-            if ((vy + h) > this._viewportLoc.h) {
-                h = this._viewportLoc.h - vy;
+            if ((y + h) > this._fbHeight) {
+                h = this._fbHeight - y;
             }
 
             if ((w > 0) && (h > 0)) {
@@ -288,7 +179,7 @@ export default class Display {
                 //        noticed any problem yet.
                 this._targetCtx.drawImage(this._backbuffer,
                                           x, y, w, h,
-                                          vx, vy, w, h);
+                                          x, y, w, h);
             }
 
             this._damageBounds.left = this._damageBounds.top = 65535;
@@ -296,11 +187,11 @@ export default class Display {
         }
     }
 
-    pending() {
+    pending(): boolean {
         return this._renderQ.length > 0;
     }
 
-    flush() {
+    flush(): Promise<void> {
         if (this._renderQ.length === 0) {
             return Promise.resolve();
         } else {
@@ -313,7 +204,7 @@ export default class Display {
         }
     }
 
-    fillRect(x, y, width, height, color, fromQueue) {
+    fillRect(x: number, y: number, width: number, height: number, color: number[] | Uint8Array, fromQueue?: boolean): void {
         if (this._renderQ.length !== 0 && !fromQueue) {
             this._renderQPush({
                 'type': 'fill',
@@ -330,7 +221,7 @@ export default class Display {
         }
     }
 
-    copyImage(oldX, oldY, newX, newY, w, h, fromQueue) {
+    copyImage(oldX: number, oldY: number, newX: number, newY: number, w: number, h: number, fromQueue?: boolean): void {
         if (this._renderQ.length !== 0 && !fromQueue) {
             this._renderQPush({
                 'type': 'copy',
@@ -349,9 +240,11 @@ export default class Display {
             //
             // We need to set these every time since all properties are reset
             // when the the size is changed
-            this._drawCtx.mozImageSmoothingEnabled = false;
-            this._drawCtx.webkitImageSmoothingEnabled = false;
-            this._drawCtx.msImageSmoothingEnabled = false;
+            const legacyCtx = this._drawCtx as CanvasRenderingContext2D & Record<
+                "mozImageSmoothingEnabled" | "webkitImageSmoothingEnabled" | "msImageSmoothingEnabled", boolean>;
+            legacyCtx.mozImageSmoothingEnabled = false;
+            legacyCtx.webkitImageSmoothingEnabled = false;
+            legacyCtx.msImageSmoothingEnabled = false;
             this._drawCtx.imageSmoothingEnabled = false;
 
             this._drawCtx.drawImage(this._backbuffer,
@@ -361,14 +254,21 @@ export default class Display {
         }
     }
 
-    imageRect(x, y, width, height, mime, arr) {
+    imageRect(x: number, y: number, width: number, height: number, mime: string, arr: Uint8Array): void {
         /* The internal logic cannot handle empty images, so bail early */
         if ((width === 0) || (height === 0)) {
             return;
         }
 
+        // Convert in chunks to avoid blowing the argument limit of
+        // String.fromCharCode on large rects
+        let binary = "";
+        for (let i = 0; i < arr.length; i += 4096) {
+            binary += String.fromCharCode(...arr.subarray(i, i + 4096));
+        }
+
         const img = new Image();
-        img.src = "data: " + mime + ";base64," + Base64.encode(arr);
+        img.src = "data:" + mime + ";base64," + btoa(binary);
 
         this._renderQPush({
             'type': 'img',
@@ -380,18 +280,7 @@ export default class Display {
         });
     }
 
-    videoFrame(x, y, width, height, frame) {
-        this._renderQPush({
-            'type': 'frame',
-            'frame': frame,
-            'x': x,
-            'y': y,
-            'width': width,
-            'height': height
-        });
-    }
-
-    blitImage(x, y, width, height, arr, offset, fromQueue) {
+    blitImage(x: number, y: number, width: number, height: number, arr: Uint8Array, offset: number, fromQueue?: boolean): void {
         if (this._renderQ.length !== 0 && !fromQueue) {
             // NB(directxman12): it's technically more performant here to use preallocated arrays,
             // but it's a lot of extra work for not a lot of payoff -- if we're using the render queue,
@@ -408,7 +297,7 @@ export default class Display {
             });
         } else {
             // NB(directxman12): arr must be an Type Array view
-            let data = new Uint8ClampedArray(arr.buffer,
+            let data = new Uint8ClampedArray(arr.buffer as ArrayBuffer,
                                              arr.byteOffset + offset,
                                              width * height * 4);
             let img = new ImageData(data, width, height);
@@ -417,52 +306,32 @@ export default class Display {
         }
     }
 
-    drawImage(img, ...args) {
-        this._drawCtx.drawImage(img, ...args);
+    drawImage(img: CanvasImageSource, ...args: number[]): void {
+        // The 2D context's drawImage is a set of fixed-arity overloads; the
+        // fork only ever forwards a variadic coordinate list, so widen it.
+        (this._drawCtx.drawImage as (image: CanvasImageSource, ...coords: number[]) => void)(img, ...args);
 
         if (args.length <= 4) {
             const [x, y] = args;
-            this._damage(x, y, img.width, img.height);
+            const el = img as HTMLImageElement;
+            this._damage(x, y, el.width, el.height);
         } else {
             const [,, sw, sh, dx, dy] = args;
             this._damage(dx, dy, sw, sh);
         }
     }
 
-    autoscale(containerWidth, containerHeight) {
-        let scaleRatio;
-
-        if (containerWidth === 0 || containerHeight === 0) {
-            scaleRatio = 0;
-
-        } else {
-
-            const vp = this._viewportLoc;
-            const targetAspectRatio = containerWidth / containerHeight;
-            const fbAspectRatio = vp.w / vp.h;
-
-            if (fbAspectRatio >= targetAspectRatio) {
-                scaleRatio = containerWidth / vp.w;
-            } else {
-                scaleRatio = containerHeight / vp.h;
-            }
-        }
-
-        this._rescale(scaleRatio);
-    }
-
     // ===== PRIVATE METHODS =====
 
-    _rescale(factor) {
+    _rescale(factor: number): void {
         this._scale = factor;
-        const vp = this._viewportLoc;
 
         // NB(directxman12): If you set the width directly, or set the
         //                   style width to a number, the canvas is cleared.
         //                   However, if you set the style width to a string
         //                   ('NNNpx'), the canvas is scaled without clearing.
-        const width = factor * vp.w + 'px';
-        const height = factor * vp.h + 'px';
+        const width = factor * this._fbWidth + 'px';
+        const height = factor * this._fbHeight + 'px';
 
         if ((this._target.style.width !== width) ||
             (this._target.style.height !== height)) {
@@ -471,7 +340,7 @@ export default class Display {
         }
     }
 
-    _setFillColor(color) {
+    _setFillColor(color: number[] | Uint8Array): void {
         const newStyle = 'rgb(' + color[0] + ',' + color[1] + ',' + color[2] + ')';
         if (newStyle !== this._prevDrawStyle) {
             this._drawCtx.fillStyle = newStyle;
@@ -479,7 +348,7 @@ export default class Display {
         }
     }
 
-    _renderQPush(action) {
+    _renderQPush(action: RenderAction): void {
         this._renderQ.push(action);
         if (this._renderQ.length === 1) {
             // If this can be rendered immediately it will be, otherwise
@@ -488,14 +357,14 @@ export default class Display {
         }
     }
 
-    _resumeRenderQ() {
+    _resumeRenderQ(this: HTMLImageElement): void {
         // "this" is the object that is ready, not the
         // display object
-        this.removeEventListener('load', this._noVNCDisplay._resumeRenderQ);
-        this._noVNCDisplay._scanRenderQ();
+        this.removeEventListener('load', this._noVNCDisplay!._resumeRenderQ);
+        this._noVNCDisplay!._scanRenderQ();
     }
 
-    _scanRenderQ() {
+    _scanRenderQ(): void {
         let ready = true;
         while (ready && this._renderQ.length > 0) {
             const a = this._renderQ[0];
@@ -532,35 +401,6 @@ export default class Display {
                         ready = false;
                     }
                     break;
-                case 'frame':
-                    if (a.frame.ready) {
-                        // The encoded frame may be larger than the rect due to
-                        // limitations of the encoder, so we need to crop the
-                        // frame.
-                        let frame = a.frame.frame;
-                        if (frame.codedWidth < a.width || frame.codedHeight < a.height) {
-                            Log.Warn("Decoded video frame does not cover its full rectangle area. Expecting at least " +
-                                      a.width + "x" + a.height + " but got " +
-                                      frame.codedWidth + "x" + frame.codedHeight);
-                        }
-                        const sx = 0;
-                        const sy = 0;
-                        const sw = a.width;
-                        const sh = a.height;
-                        const dx = a.x;
-                        const dy = a.y;
-                        const dw = sw;
-                        const dh = sh;
-                        this.drawImage(frame, sx, sy, sw, sh, dx, dy, dw, dh);
-                        frame.close();
-                    } else {
-                        let display = this;
-                        a.frame.promise.then(() => {
-                            display._scanRenderQ();
-                        });
-                        ready = false;
-                    }
-                    break;
             }
 
             if (ready) {
@@ -570,7 +410,7 @@ export default class Display {
 
         if (this._renderQ.length === 0 &&
             this._flushPromise !== null) {
-            this._flushResolve();
+            this._flushResolve!();
             this._flushPromise = null;
             this._flushResolve = null;
         }

@@ -1,12 +1,12 @@
-import KeyTable from "./keysym.js";
-import keysyms from "./keysymdef.js";
-import vkeys from "./vkeys.js";
-import fixedkeys from "./fixedkeys.js";
-import DOMKeyTable from "./domkeytable.js";
-import * as browser from "../util/browser.js";
+import KeyTable from "./keysym";
+import keysyms from "./keysymdef";
+import vkeys from "./vkeys";
+import fixedkeys from "./fixedkeys";
+import DOMKeyTable from "./domkeytable";
+import * as browser from "../util/browser";
 
 // Get 'KeyboardEvent.code', handling legacy browsers
-export function getKeycode(evt) {
+export function getKeycode(evt: KeyboardEvent): string {
     // Are we getting proper key identifiers?
     // (unfortunately Firefox and Chrome are crappy here and gives
     // us an empty string on some platforms, rather than leaving it
@@ -65,7 +65,7 @@ export function getKeycode(evt) {
 }
 
 // Get 'KeyboardEvent.key', handling legacy browsers
-export function getKey(evt) {
+export function getKey(evt: KeyboardEvent): string {
     // Are we getting a proper key value?
     if ((evt.key !== undefined) && (evt.key !== 'Unidentified')) {
         // Mozilla isn't fully in sync with the spec yet
@@ -108,7 +108,7 @@ export function getKey(evt) {
 }
 
 // Get the most reliable keysym value we can get from a key event
-export function getKeysym(evt) {
+export function getKeysym(evt: KeyboardEvent): number | null {
     const key = getKey(evt);
 
     if (key === 'Unidentified') {
@@ -182,7 +182,7 @@ export function getKeysym(evt) {
         return null;
     }
 
-    const codepoint = key.charCodeAt();
+    const codepoint = key.charCodeAt(0);
     if (codepoint) {
         return keysyms.lookup(codepoint);
     }

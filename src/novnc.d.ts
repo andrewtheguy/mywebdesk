@@ -1,8 +1,8 @@
 // Hand-written type declarations for the vendored noVNC fork
 // (src/vendor/novnc, reached via the @novnc-core vite alias). Only the
-// fork's public surface is declared; keep this in sync with core/rfb.js.
+// fork's public surface is declared; keep this in sync with core/rfb.ts.
 
-declare module "@novnc-core/rfb.js" {
+declare module "@novnc-core/rfb" {
   export interface FbSize {
     width: number;
     height: number;
@@ -20,8 +20,6 @@ declare module "@novnc-core/rfb.js" {
   export default class RFB {
     constructor(target: HTMLElement, channel: WebSocket);
 
-    viewOnly: boolean;
-    focusOnClick: boolean;
     resizeSession: boolean;
 
     // When set, returns the desired framebuffer size in device pixels and
@@ -34,9 +32,7 @@ declare module "@novnc-core/rfb.js" {
     readonly screenElement: HTMLDivElement;
 
     disconnect(): void;
-    sendKey(keysym: number, code: string | null, down?: boolean): void;
-    focus(options?: FocusOptions): void;
-    blur(): void;
+    sendKey(keysym: number | null, code: string | null, down?: boolean): void;
     clipboardPasteFrom(text: string): void;
     setBaseScale(scale: number): void;
     requestResize(): void;
@@ -56,11 +52,11 @@ declare module "@novnc-core/rfb.js" {
   }
 }
 
-declare module "@novnc-core/input/keyboard.js" {
+declare module "@novnc-core/input/keyboard" {
   export default class Keyboard {
     constructor(target: Element | Document);
     onkeyevent: (
-      keysym: number,
+      keysym: number | null,
       code: string,
       down: boolean,
       numlock?: boolean | null,

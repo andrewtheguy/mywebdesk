@@ -6,10 +6,10 @@
  * See README.md for usage and integration instructions.
  */
 
-export function toUnsigned32bit(toConvert) {
+export function toUnsigned32bit(toConvert: number): number {
     return toConvert >>> 0;
 }
 
-export function toSigned32bit(toConvert) {
+export function toSigned32bit(toConvert: number): number {
     return toConvert | 0;
 }

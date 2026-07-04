@@ -1,5 +1,5 @@
-import Keyboard from "@novnc-core/input/keyboard.js";
-import RFB from "@novnc-core/rfb.js";
+import Keyboard from "@novnc-core/input/keyboard";
+import RFB from "@novnc-core/rfb";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseConnectionConfig } from "./connectionConfig";
 import { computeResizeTarget } from "./resizeSizing";
@@ -182,8 +182,8 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       });
 
       // Mount point for noVNC's screen/canvas plus our input overlay on top.
-      // The overlay starves noVNC's own canvas-attached mouse/touch handlers
-      // (viewOnly must stay false or noVNC refuses resize/key requests).
+      // The fork has no input handlers of its own; all input is synthesized
+      // here and sent via sendKey()/sendPointer().
       containerEl.style.position = "relative";
       const overlayEl = document.createElement("div");
       overlayEl.style.position = "absolute";
@@ -197,7 +197,6 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       // password never reaches the client.
       const rfb = new RFB(containerEl, ws);
       rfbRef.current = rfb;
-      rfb.focusOnClick = false;
       containerEl.appendChild(overlayEl);
 
       const screenEl = rfb.screenElement;

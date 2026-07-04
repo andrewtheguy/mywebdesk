@@ -1,8 +1,11 @@
 import { expect, test } from "bun:test";
 // noVNC's DES implementation (VNC key-bit convention baked in) as an
-// independent reference for our node:crypto-based implementation.
-// @ts-expect-error - no type declarations for the vendored noVNC module
-import { DESECBCipher } from "../src/vendor/novnc/core/crypto/des.js";
+// independent reference for our node:crypto-based implementation. Comes
+// from the upstream @novnc/novnc devDependency, not the vendored fork
+// (which has no client-side crypto). Deep import bypasses the package's
+// exports map via a relative path.
+// @ts-expect-error - no type declarations for the deep noVNC import
+import { DESECBCipher } from "../node_modules/@novnc/novnc/core/crypto/des.js";
 import { vncAuthResponse } from "./vncAuth";
 
 function referenceResponse(password: string, challenge: Buffer): Buffer {

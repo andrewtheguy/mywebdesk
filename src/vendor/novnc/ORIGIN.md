@@ -18,10 +18,10 @@ Pruned subsystems this app can never exercise (the server proxy performs the
 real VNC auth and offers the browser only security type None; the app has its
 own input overlay and keeps the cursor rendered server-side):
 
-- Deleted files: `core/ra2.js`, `core/crypto/{aes,bigint,crypto,dh,md5,rsa}.js`,
+- Deleted files: `core/ra2.js`, the entire `core/crypto/` directory,
   `core/input/gesturehandler.js`, `core/util/cursor.js`.
-  (`core/crypto/des.js` is kept, unbundled, as the reference implementation
-  for `server/vncAuth.test.ts`.)
+  (`server/vncAuth.test.ts` gets its DES reference implementation from the
+  upstream `@novnc/novnc` devDependency instead.)
 - `core/rfb.js`:
   - Client-side auth removed: only security type None is supported. Deleted
     all `_negotiate*Auth` methods (Xvp/VeNCrypt/Plain/StdVNC/ARD/TightUnix/

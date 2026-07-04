@@ -1348,11 +1348,6 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         );
       });
 
-      rfb.addEventListener("credentialsrequired", () => {
-        if (connectionId !== connectionIdRef.current) return;
-        setError("VNC server requires credentials that are not configured");
-      });
-
       // Clipboard from remote (noVNC handles the extended/Unicode transport)
       rfb.addEventListener("clipboard", (event) => {
         if (connectionId !== connectionIdRef.current) return;

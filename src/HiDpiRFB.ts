@@ -1,10 +1,5 @@
 import RFB from "@novnc-core/rfb.js";
 
-// RFB pseudo-encoding constants (stable protocol values, mirrored from
-// noVNC's core/encodings.js).
-const PSEUDO_ENCODING_CURSOR = -239;
-const PSEUDO_ENCODING_VMWARE_CURSOR = 0x574d5664;
-
 // Matches useVnc's own viewport-resize debounce so both request paths settle
 // together after the window stops changing size.
 const RESIZE_REQUEST_DEBOUNCE_MS = 250;
@@ -17,12 +12,11 @@ export interface FbSize {
 // RFB subclass that makes exact HiDPI framebuffer sizing possible. Stock
 // noVNC sizes the remote desktop from the container's CSS pixel size; this
 // subclass lets the caller inject a device-pixel target instead, keeps our
-// own display scale (stock forces 1.0 when scaleViewport is off), announces
-// framebuffer resizes via a custom "fbresize" event, and keeps the cursor
-// rendered server-side (our input overlay would hide noVNC's CSS cursor).
+// own display scale (stock forces 1.0 when scaleViewport is off), and
+// announces framebuffer resizes via a custom "fbresize" event.
 //
-// The overridden/accessed underscore members are internal noVNC API, valid
-// only for the exact pinned version (1.7.0). NOTE: the RFB constructor runs
+// The overridden/accessed underscore members are internal API of the
+// vendored noVNC fork (src/vendor/novnc). NOTE: the RFB constructor runs
 // _connect() synchronously, before subclass field initializers — every
 // override below must tolerate its subclass state being undefined.
 export class HiDpiRFB extends RFB {
@@ -76,31 +70,6 @@ export class HiDpiRFB extends RFB {
     this.dispatchEvent(
       new CustomEvent<FbSize>("fbresize", { detail: { width, height } }),
     );
-  }
-
-  // Advertising cursor pseudo-encodings makes the server stop drawing the
-  // cursor into the framebuffer (noVNC would show it as a CSS cursor on its
-  // canvas, which sits under our input overlay and is therefore invisible).
-  // Filter them out so the cursor stays composited server-side.
-  protected override _sendEncodings(): void {
-    const messages = RFB.messages;
-    const originalClientEncodings = messages.clientEncodings;
-    messages.clientEncodings = (sock, encs) => {
-      originalClientEncodings.call(
-        messages,
-        sock,
-        encs.filter(
-          (enc) =>
-            enc !== PSEUDO_ENCODING_CURSOR &&
-            enc !== PSEUDO_ENCODING_VMWARE_CURSOR,
-        ),
-      );
-    };
-    try {
-      super._sendEncodings();
-    } finally {
-      messages.clientEncodings = originalClientEncodings;
-    }
   }
 
   // Safe to call repeatedly: noVNC rate-limits to one pending request per

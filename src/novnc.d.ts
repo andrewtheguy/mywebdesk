@@ -3,15 +3,8 @@
 // on.
 
 declare module "@novnc-core/rfb.js" {
-  export interface RFBCredentials {
-    username?: string;
-    password?: string;
-    target?: string;
-  }
-
   export interface RFBOptions {
     shared?: boolean;
-    credentials?: RFBCredentials;
     repeaterID?: string;
     wsProtocols?: string[];
   }
@@ -19,7 +12,6 @@ declare module "@novnc-core/rfb.js" {
   export interface RFBEventMap {
     connect: CustomEvent<Record<string, never>>;
     disconnect: CustomEvent<{ clean: boolean }>;
-    credentialsrequired: CustomEvent<{ types: string[] }>;
     securityfailure: CustomEvent<{ status: number; reason?: string }>;
     desktopname: CustomEvent<{ name: string }>;
     clipboard: CustomEvent<{ text: string }>;
@@ -36,19 +28,10 @@ declare module "@novnc-core/rfb.js" {
 
     viewOnly: boolean;
     focusOnClick: boolean;
-    clipViewport: boolean;
-    dragViewport: boolean;
-    scaleViewport: boolean;
     resizeSession: boolean;
-    showDotCursor: boolean;
     background: string;
-    qualityLevel: number;
-    compressionLevel: number;
-    readonly capabilities: { power: boolean };
 
     disconnect(): void;
-    sendCredentials(creds: RFBCredentials): void;
-    sendCtrlAltDel(): void;
     sendKey(keysym: number, code: string | null, down?: boolean): void;
     focus(options?: FocusOptions): void;
     blur(): void;
@@ -66,7 +49,7 @@ declare module "@novnc-core/rfb.js" {
     removeEventListener(type: string, listener: (ev: Event) => void): void;
     dispatchEvent(event: Event): boolean;
 
-    // ----- Internal API surface (valid for noVNC 1.7.0 only) -----
+    // ----- Internal API surface of the vendored fork -----
     protected _screen: HTMLDivElement;
     protected _canvas: HTMLCanvasElement;
     protected _display: { scale: number };
@@ -87,11 +70,9 @@ declare module "@novnc-core/rfb.js" {
     protected _saveExpectedClientSize(): void;
     protected _requestRemoteResize(): void;
     protected _resize(width: number, height: number): void;
-    protected _sendEncodings(): void;
 
     static messages: {
       pointerEvent(sock: NoVncSocket, x: number, y: number, mask: number): void;
-      clientEncodings(sock: NoVncSocket, encodings: number[]): void;
     };
   }
 }

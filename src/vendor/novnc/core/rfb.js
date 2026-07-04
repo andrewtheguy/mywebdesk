@@ -38,6 +38,11 @@ import H264Decoder from "./decoders/h264.js";
 const DISCONNECT_TIMEOUT = 3;
 const DEFAULT_BACKGROUND = 'rgb(40, 40, 40)';
 
+// How long the container size must be stable before a remote resize is
+// requested. Matches useVnc's own viewport-resize debounce so both request
+// paths settle together after the window stops changing size.
+const RESIZE_REQUEST_DEBOUNCE_MS = 250;
+
 // Minimum wait (ms) between two mouse moves
 const MOUSE_MOVE_DELAY = 17;
 
@@ -144,7 +149,12 @@ export default class RFB extends EventTargetMixin {
         // Timers
         this._disconnTimer = null;      // disconnection timer
         this._resizeTimeout = null;     // resize rate limiting
+        this._resizeRequestDebounce = null; // remote-resize debounce
         this._mouseMoveTimer = null;
+
+        // Display scale controlled by the app via setBaseScale() (stock
+        // noVNC forced 1.0 unless scaleViewport autoscaled to the container)
+        this._baseScale = 1;
 
         // Decoder states
         this._decoders = {};
@@ -241,10 +251,14 @@ export default class RFB extends EventTargetMixin {
         this.dragViewport = false;
         this.focusOnClick = true;
 
+        // When set, returns the desired framebuffer size in device pixels;
+        // it replaces the container CSS size as the setDesktopSize target,
+        // making exact HiDPI framebuffer sizing possible.
+        this.computeTargetSize = null;
+
         this._viewOnly = false;
         this._clipViewport = false;
         this._clippingViewport = false;
-        this._scaleViewport = false;
         this._resizeSession = false;
 
         this._qualityLevel = 6;
@@ -286,20 +300,6 @@ export default class RFB extends EventTargetMixin {
     set clipViewport(viewport) {
         this._clipViewport = viewport;
         this._updateClip();
-    }
-
-    get scaleViewport() { return this._scaleViewport; }
-    set scaleViewport(scale) {
-        this._scaleViewport = scale;
-        // Scaling trumps clipping, so we may need to adjust
-        // clipping when enabling or disabling scaling
-        if (scale && this._clipViewport) {
-            this._updateClip();
-        }
-        this._updateScale();
-        if (!scale && this._clipViewport) {
-            this._updateClip();
-        }
     }
 
     get resizeSession() { return this._resizeSession; }
@@ -459,6 +459,39 @@ export default class RFB extends EventTargetMixin {
         }
     }
 
+    // Sets the display scale directly; _updateScale() keeps reapplying it
+    // when noVNC's ResizeObserver or a framebuffer resize reruns scaling.
+    setBaseScale(scale) {
+        this._baseScale = scale;
+        this._display.scale = scale;
+    }
+
+    // Safe to call repeatedly: rate-limited to one pending request per
+    // 100ms and a no-op when the framebuffer already matches the target.
+    requestResize() {
+        this._requestRemoteResize();
+    }
+
+    sendPointer(x, y, buttonMask) {
+        if (this._rfbConnectionState !== 'connected') { return; }
+        // Pointer coordinates are unsigned 16-bit on the wire; clamp to the
+        // framebuffer so letterbox-area events can't wrap around.
+        const maxX = Math.max(0, this._fbWidth - 1);
+        const maxY = Math.max(0, this._fbHeight - 1);
+        RFB.messages.pointerEvent(this._sock,
+                                  Math.min(maxX, Math.max(0, Math.round(x))),
+                                  Math.min(maxY, Math.max(0, Math.round(y))),
+                                  buttonMask);
+    }
+
+    get connected() { return this._rfbConnectionState === 'connected'; }
+
+    get fbSize() { return { width: this._fbWidth, height: this._fbHeight }; }
+
+    get canvasElement() { return this._canvas; }
+
+    get screenElement() { return this._screen; }
+
     getImageData() {
         return this._display.getImageData();
     }
@@ -545,6 +578,7 @@ export default class RFB extends EventTargetMixin {
             }
         }
         clearTimeout(this._resizeTimeout);
+        clearTimeout(this._resizeRequestDebounce);
         clearTimeout(this._mouseMoveTimer);
         Log.Debug("<< RFB.disconnect");
     }
@@ -645,9 +679,16 @@ export default class RFB extends EventTargetMixin {
             this._saveExpectedClientSize();
         });
 
-        // Request changing the resolution of the remote display to
-        // the size of the local browser viewport.
-        this._requestRemoteResize();
+        // Stock noVNC requested the remote resize right here, straight from
+        // its ResizeObserver — so a continuous window drag resized the
+        // remote desktop ~10×/s and the session visibly flickered. Keep the
+        // local display updates above immediate but debounce the remote
+        // resize request until the size has been stable for a moment.
+        clearTimeout(this._resizeRequestDebounce);
+        this._resizeRequestDebounce = setTimeout(() => {
+            if (this._rfbConnectionState !== 'connected') { return; }
+            this._requestRemoteResize();
+        }, RESIZE_REQUEST_DEBOUNCE_MS);
     }
 
     // Update state of clipping in Display object, and make sure the
@@ -655,11 +696,6 @@ export default class RFB extends EventTargetMixin {
     _updateClip() {
         const curClip = this._display.clipViewport;
         let newClip = this._clipViewport;
-
-        if (this._scaleViewport) {
-            // Disable viewport clipping if we are scaling
-            newClip = false;
-        }
 
         if (curClip !== newClip) {
             this._display.clipViewport = newClip;
@@ -684,14 +720,12 @@ export default class RFB extends EventTargetMixin {
         }
     }
 
+    // Stock noVNC forced display.scale to 1.0 here (or autoscaled to the
+    // container); this fork keeps the app-controlled base scale applied so
+    // exact HiDPI fit/zoom survives ResizeObserver and framebuffer-resize
+    // reruns.
     _updateScale() {
-        if (!this._scaleViewport) {
-            this._display.scale = 1.0;
-        } else {
-            const size = this._screenSize();
-            this._display.autoscale(size.w, size.h);
-        }
-        this._fixScrollbars();
+        this._display.scale = this._baseScale;
     }
 
     // Requests a change of remote desktop size. This message is an extension
@@ -738,8 +772,14 @@ export default class RFB extends EventTargetMixin {
                    size.w + 'x' + size.h);
     }
 
-    // Gets the the size of the available screen
+    // Gets the desired framebuffer size: the app-injected device-pixel
+    // target when set (sole source for setDesktopSize requests), otherwise
+    // the container's CSS size.
     _screenSize() {
+        if (this.computeTargetSize) {
+            const { width, height } = this.computeTargetSize();
+            return { w: width, h: height };
+        }
         let r = this._screen.getBoundingClientRect();
         return { w: r.width, h: r.height };
     }
@@ -2067,6 +2107,10 @@ export default class RFB extends EventTargetMixin {
 
         // Keep this size until browser client size changes
         this._saveExpectedClientSize();
+
+        this.dispatchEvent(new CustomEvent(
+            "fbresize",
+            { detail: { width: width, height: height } }));
     }
 
     _xvpOp(ver, op) {

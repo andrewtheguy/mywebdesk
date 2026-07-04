@@ -1,7 +1,7 @@
 import Keyboard from "@novnc-core/input/keyboard.js";
+import RFB from "@novnc-core/rfb.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseConnectionConfig } from "./connectionConfig";
-import { HiDpiRFB } from "./HiDpiRFB";
 import { computeResizeTarget } from "./resizeSizing";
 import { type MouseButtonState, toRfbButtonMask } from "./rfbInput";
 
@@ -89,7 +89,7 @@ interface ThreeFingerScrollGesture {
 }
 
 export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
-  const rfbRef = useRef<HiDpiRFB | null>(null);
+  const rfbRef = useRef<RFB | null>(null);
   const keyboardRef = useRef<Keyboard | null>(null);
   const keyboardTargetRef = useRef<HTMLElement | Document | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -195,7 +195,7 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       // No credentials: the server-side proxy answers the VNC auth challenge
       // itself and presents security type None to the browser, so the VNC
       // password never reaches the client.
-      const rfb = new HiDpiRFB(containerEl, ws);
+      const rfb = new RFB(containerEl, ws);
       rfbRef.current = rfb;
       rfb.focusOnClick = false;
       containerEl.appendChild(overlayEl);

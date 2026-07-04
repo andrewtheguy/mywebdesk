@@ -1,8 +1,13 @@
-// Hand-written type stubs for the vendored noVNC fork (src/vendor/novnc).
-// Includes the internal underscore-prefixed surface that HiDpiRFB.ts relies
-// on.
+// Hand-written type declarations for the vendored noVNC fork
+// (src/vendor/novnc, reached via the @novnc-core vite alias). Only the
+// fork's public surface is declared; keep this in sync with core/rfb.js.
 
 declare module "@novnc-core/rfb.js" {
+  export interface FbSize {
+    width: number;
+    height: number;
+  }
+
   export interface RFBOptions {
     shared?: boolean;
     repeaterID?: string;
@@ -15,9 +20,8 @@ declare module "@novnc-core/rfb.js" {
     securityfailure: CustomEvent<{ status: number; reason?: string }>;
     desktopname: CustomEvent<{ name: string }>;
     clipboard: CustomEvent<{ text: string }>;
+    fbresize: CustomEvent<FbSize>;
   }
-
-  export type NoVncSocket = unknown;
 
   export default class RFB {
     constructor(
@@ -31,11 +35,23 @@ declare module "@novnc-core/rfb.js" {
     resizeSession: boolean;
     background: string;
 
+    // When set, returns the desired framebuffer size in device pixels and
+    // becomes the sole source for setDesktopSize requests.
+    computeTargetSize: (() => FbSize) | null;
+
+    readonly connected: boolean;
+    readonly fbSize: FbSize;
+    readonly canvasElement: HTMLCanvasElement;
+    readonly screenElement: HTMLDivElement;
+
     disconnect(): void;
     sendKey(keysym: number, code: string | null, down?: boolean): void;
     focus(options?: FocusOptions): void;
     blur(): void;
     clipboardPasteFrom(text: string): void;
+    setBaseScale(scale: number): void;
+    requestResize(): void;
+    sendPointer(x: number, y: number, buttonMask: number): void;
 
     addEventListener<K extends keyof RFBEventMap>(
       type: K,
@@ -48,32 +64,6 @@ declare module "@novnc-core/rfb.js" {
     ): void;
     removeEventListener(type: string, listener: (ev: Event) => void): void;
     dispatchEvent(event: Event): boolean;
-
-    // ----- Internal API surface of the vendored fork -----
-    protected _screen: HTMLDivElement;
-    protected _canvas: HTMLCanvasElement;
-    protected _display: { scale: number };
-    protected _sock: NoVncSocket;
-    protected _fbWidth: number;
-    protected _fbHeight: number;
-    protected _rfbConnectionState:
-      | ""
-      | "connecting"
-      | "connected"
-      | "disconnecting"
-      | "disconnected";
-    protected _screenSize(): { w: number; h: number };
-    protected _updateScale(): void;
-    protected _updateClip(): void;
-    protected _handleResize(): void;
-    protected _clientHasExpectedSize(): boolean;
-    protected _saveExpectedClientSize(): void;
-    protected _requestRemoteResize(): void;
-    protected _resize(width: number, height: number): void;
-
-    static messages: {
-      pointerEvent(sock: NoVncSocket, x: number, y: number, mask: number): void;
-    };
   }
 }
 

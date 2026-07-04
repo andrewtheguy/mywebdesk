@@ -100,7 +100,7 @@ The output is a ready-to-paste `.env` line (base64-encoded `username:bcrypt_hash
 
 This is a workaround that helps, not full HiDPI support: the client can render the framebuffer crisply, but true HiDPI depends on the remote desktop environment scaling its own UI, which is a global session setting with the limitations noted below.
 
-On non-touch devices the client requests a remote desktop of exactly `viewport CSS size × devicePixelRatio` via the RFB SetDesktopSize extension, then scales the canvas down by `1/devicePixelRatio` so one framebuffer pixel maps to one device pixel — pixel-crisp on Retina. (Stock noVNC sizes in CSS pixels; a small `RFB` subclass over the vendored fork overrides its screen-size calculation.)
+On non-touch devices the client requests a remote desktop of exactly `viewport CSS size × devicePixelRatio` via the RFB SetDesktopSize extension, then scales the canvas down by `1/devicePixelRatio` so one framebuffer pixel maps to one device pixel — pixel-crisp on Retina. (Stock noVNC sizes in CSS pixels; the vendored fork's `RFB` takes an injected device-pixel target via its `computeTargetSize` property.)
 
 Requirements on the VNC server side:
 

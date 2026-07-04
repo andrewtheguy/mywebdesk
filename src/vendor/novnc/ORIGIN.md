@@ -38,3 +38,22 @@ own input overlay and keeps the cursor rendered server-side):
     `_shouldShowDotCursor`, `_refreshCursor`, `showDotCursor`, `RFB.cursors`;
     `_sendEncodings` no longer advertises the cursor pseudo-encodings (the
     server keeps compositing the cursor into the framebuffer).
+
+App-specific behavior folded into `core/rfb.js` (formerly the `HiDpiRFB`
+subclass in the app):
+
+- Public `computeTargetSize` callback property: when set, `_screenSize()`
+  returns its device-pixel result instead of the container CSS size, making
+  exact HiDPI framebuffer sizing possible.
+- App-controlled display scale: `setBaseScale(scale)` + `_updateScale()`
+  reapplying it; the `scaleViewport` property and its autoscale path were
+  removed.
+- `_handleResize()` debounces `_requestRemoteResize()` by 250 ms
+  (`RESIZE_REQUEST_DEBOUNCE_MS`) so window drags don't resize the remote
+  desktop ~10×/s; the timer is cleared in `_disconnect()`.
+- `_resize()` dispatches a `fbresize` CustomEvent (`{width, height}`).
+- New public helpers: `requestResize()`, `sendPointer(x, y, buttonMask)`
+  (clamped to the framebuffer; coordinates are unsigned 16-bit on the wire),
+  and getters `connected`, `fbSize`, `canvasElement`, `screenElement`.
+
+The fork's public API is declared in `src/novnc.d.ts`.

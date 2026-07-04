@@ -22,6 +22,7 @@ const CTRL_KEYSYM = 0xffe3;
 const ALT_KEYSYM = 0xffe9;
 const SHIFT_KEYSYM = 0xffe1;
 const SUPER_KEYSYM = 0xffeb;
+const V_KEYSYM = 0x0076;
 const R_KEYSYM = 0x0072;
 const T_KEYSYM = 0x0074;
 const W_KEYSYM = 0x0077;
@@ -164,6 +165,7 @@ export default function App() {
   const [clipboardSendNotice, setClipboardSendNotice] = useState<string | null>(
     null,
   );
+  const [isDisplayFocused, setIsDisplayFocused] = useState(false);
   const [showGestureHelp, setShowGestureHelp] = useState(false);
   const [softKeyboardOpen, setSoftKeyboardOpen] = useState(false);
   const [viewportState, setViewportState] = useState<ViewportState>(() =>
@@ -445,6 +447,7 @@ export default function App() {
     if (state === "connected") {
       hiddenInputRef.current?.focus();
     } else {
+      setIsDisplayFocused(false);
       setIsManualClipboardInputActive(false);
     }
     if (state === "idle" || state === "disconnected") {
@@ -711,11 +714,45 @@ export default function App() {
     [isCoarsePointer, toolbarOpen, toggleToolbar],
   );
 
+  const handleDisplayFocus = useCallback(() => {
+    setIsDisplayFocused(true);
+  }, []);
+
+  const handleDisplayBlur = useCallback(() => {
+    setIsDisplayFocused(false);
+  }, []);
+
   const handleDisplayPointerDown = useCallback(() => {
     // Focus the container (not the hidden input) so keyboard events are
     // captured without triggering the mobile soft keyboard on every tap/pan.
     containerRef.current?.focus();
   }, []);
+
+  const handleDisplayKeyDownCapture = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (state !== "connected" || !isDisplayFocused) return;
+      if (e.repeat || e.altKey || e.shiftKey) return;
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "v") return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      void (async () => {
+        const text = await readLocalClipboardText();
+        if (text !== null) {
+          setClipboardInput(text);
+          setIsManualClipboardInputActive(true);
+          lastSentLocalClipboardRef.current = text;
+          sendClipboard(text);
+        }
+        sendKey(CTRL_KEYSYM, true);
+        sendKey(V_KEYSYM, true);
+        sendKey(V_KEYSYM, false);
+        sendKey(CTRL_KEYSYM, false);
+      })();
+    },
+    [isDisplayFocused, readLocalClipboardText, sendClipboard, sendKey, state],
+  );
 
   const decryptCurrentRemoteClipboard = useCallback(async (): Promise<
     string | null
@@ -971,7 +1008,10 @@ export default function App() {
         role="application"
         aria-label="Remote display"
         tabIndex={-1}
+        onFocus={handleDisplayFocus}
+        onBlur={handleDisplayBlur}
         onPointerDown={handleDisplayPointerDown}
+        onKeyDownCapture={handleDisplayKeyDownCapture}
       >
         {/* Hidden input for mobile keyboard */}
         <input

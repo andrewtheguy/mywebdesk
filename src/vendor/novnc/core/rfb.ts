@@ -6,20 +6,21 @@
  * See README.md for usage and integration instructions.
  *
  */
+// @ts-nocheck
 
-import { toUnsigned32bit, toSigned32bit } from './util/int.js';
-import * as Log from './util/logging.js';
-import { encodeUTF8, decodeUTF8 } from './util/strings.js';
-import Display from "./display.js";
-import Inflator from "./inflator.js";
-import Deflator from "./deflator.js";
-import Websock from "./websock.js";
-import XtScancode from "./input/xtscancodes.js";
-import { encodings } from "./encodings.js";
+import { toUnsigned32bit, toSigned32bit } from './util/int';
+import * as Log from './util/logging';
+import { encodeUTF8, decodeUTF8 } from './util/strings';
+import Display from "./display";
+import Inflator from "./inflator";
+import Deflator from "./deflator";
+import Websock from "./websock";
+import XtScancode from "./input/xtscancodes";
+import { encodings } from "./encodings";
 
-import RawDecoder from "./decoders/raw.js";
-import CopyRectDecoder from "./decoders/copyrect.js";
-import TightDecoder from "./decoders/tight.js";
+import RawDecoder from "./decoders/raw";
+import CopyRectDecoder from "./decoders/copyrect";
+import TightDecoder from "./decoders/tight";
 
 // How many seconds to wait for a disconnect to finish
 const DISCONNECT_TIMEOUT = 3;

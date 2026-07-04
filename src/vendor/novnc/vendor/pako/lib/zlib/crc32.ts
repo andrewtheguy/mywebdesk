@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Note: we can't get significant speed boost here.
 // So write code to minimize size - no pregenerated tables
 // and array tools dependencies.

@@ -5,6 +5,7 @@
  *
  * See README.md for usage and integration instructions.
  */
+// @ts-nocheck
 
 export function toUnsigned32bit(toConvert) {
     return toConvert >>> 0;

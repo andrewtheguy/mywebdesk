@@ -137,3 +137,10 @@ subclass in the app):
   and getters `connected`, `fbSize`, `canvasElement`, `screenElement`.
 
 The fork's public API is declared in `src/novnc.d.ts`.
+
+TypeScript migration:
+
+- Renamed the remaining vendored JavaScript modules under this fork from
+  `.js` to `.ts`, updated internal import specifiers to extensionless module
+  paths, and added `// @ts-nocheck` pragmas after existing file headers so the
+  fork remains behaviorally unchanged while being consumed as TypeScript.

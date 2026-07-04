@@ -5,10 +5,11 @@
  *
  * See README.md for usage and integration instructions.
  */
+// @ts-nocheck
 
-import { deflateInit, deflate } from "../vendor/pako/lib/zlib/deflate.js";
-import { Z_FULL_FLUSH, Z_DEFAULT_COMPRESSION } from "../vendor/pako/lib/zlib/deflate.js";
-import ZStream from "../vendor/pako/lib/zlib/zstream.js";
+import { deflateInit, deflate } from "../vendor/pako/lib/zlib/deflate";
+import { Z_FULL_FLUSH, Z_DEFAULT_COMPRESSION } from "../vendor/pako/lib/zlib/deflate";
+import ZStream from "../vendor/pako/lib/zlib/zstream";
 
 export default class Deflator {
     constructor() {

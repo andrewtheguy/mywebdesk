@@ -6,6 +6,7 @@
  * See README.md for usage and integration instructions.
  *
  */
+// @ts-nocheck
 
 export default class CopyRectDecoder {
     decodeRect(x, y, width, height, sock, display, depth) {

@@ -7,6 +7,7 @@
  *
  * Browser feature support detection
  */
+// @ts-nocheck
 
 /* OS */
 

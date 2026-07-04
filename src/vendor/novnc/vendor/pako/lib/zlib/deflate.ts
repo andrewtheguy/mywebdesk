@@ -1,8 +1,9 @@
-import * as utils from "../utils/common.js";
-import * as trees from "./trees.js";
-import adler32 from "./adler32.js";
-import crc32 from "./crc32.js";
-import msg from "./messages.js";
+// @ts-nocheck
+import * as utils from "../utils/common";
+import * as trees from "./trees";
+import adler32 from "./adler32";
+import crc32 from "./crc32";
+import msg from "./messages";
 
 /* Public constants ==========================================================*/
 /* ===========================================================================*/

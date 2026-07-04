@@ -5,6 +5,7 @@
  *
  * See README.md for usage and integration instructions.
  */
+// @ts-nocheck
 
 /*
  * Logging/debug routines. The level is fixed at 'warn' (nothing ever

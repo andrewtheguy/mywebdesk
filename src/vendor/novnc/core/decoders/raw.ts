@@ -6,6 +6,7 @@
  * See README.md for usage and integration instructions.
  *
  */
+// @ts-nocheck
 
 export default class RawDecoder {
     constructor() {

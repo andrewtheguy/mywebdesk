@@ -5,8 +5,9 @@
  *
  * See README.md for usage and integration instructions.
  */
+// @ts-nocheck
 
-import * as Log from './util/logging.js';
+import * as Log from './util/logging';
 
 export default class Display {
     constructor(target) {

@@ -5,6 +5,7 @@
  *
  * See README.md for usage and integration instructions.
  */
+// @ts-nocheck
 
 // Decode from UTF-8
 export function decodeUTF8(utf8string, allowLatin1=false) {

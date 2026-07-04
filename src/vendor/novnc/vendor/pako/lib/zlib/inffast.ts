@@ -1,3 +1,4 @@
+// @ts-nocheck
 // See state defs from inflate.js
 var BAD = 30;       /* got a data error -- remain here until reset */
 var TYPE = 12;      /* i: waiting for type bits, including last-flag bit */

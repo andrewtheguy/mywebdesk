@@ -1,3 +1,4 @@
+// @ts-nocheck
 export default function ZStream() {
   /* next input byte */
   this.input = null; // JS specific, because we have no pointers

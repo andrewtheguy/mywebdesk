@@ -3,6 +3,7 @@
  * Copyright (C) 2018 The noVNC authors
  * Licensed under MPL 2.0 or any later version (see LICENSE.txt)
  */
+// @ts-nocheck
 
 /*
  * Fallback mapping between HTML key codes (physical keys) and

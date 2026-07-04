@@ -5,6 +5,7 @@
  *
  * See README.md for usage and integration instructions.
  */
+// @ts-nocheck
 
 export const encodings = {
     encodingRaw: 0,

@@ -4,6 +4,7 @@
  * This file was automatically generated from keysymdef.h
  * DO NOT EDIT!
  */
+// @ts-nocheck
 
 /* Functions at the bottom */
 

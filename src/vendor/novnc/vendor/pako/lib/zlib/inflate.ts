@@ -1,8 +1,9 @@
-import * as utils from "../utils/common.js";
-import adler32 from "./adler32.js";
-import crc32 from "./crc32.js";
-import inflate_fast from "./inffast.js";
-import inflate_table from "./inftrees.js";
+// @ts-nocheck
+import * as utils from "../utils/common";
+import adler32 from "./adler32";
+import crc32 from "./crc32";
+import inflate_fast from "./inffast";
+import inflate_table from "./inftrees";
 
 var CODES = 0;
 var LENS = 1;

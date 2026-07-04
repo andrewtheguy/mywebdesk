@@ -3,8 +3,9 @@
  * Copyright (C) 2018 The noVNC authors
  * Licensed under MPL 2.0 or any later version (see LICENSE.txt)
  */
+// @ts-nocheck
 
-import KeyTable from "./keysym.js";
+import KeyTable from "./keysym";
 
 /*
  * Mapping between HTML key values and VNC/X11 keysyms for "special"

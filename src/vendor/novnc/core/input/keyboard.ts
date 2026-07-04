@@ -3,12 +3,13 @@
  * Copyright (C) 2019 The noVNC authors
  * Licensed under MPL 2.0 or any later version (see LICENSE.txt)
  */
+// @ts-nocheck
 
-import * as Log from '../util/logging.js';
-import { stopEvent } from '../util/events.js';
-import * as KeyboardUtil from "./util.js";
-import KeyTable from "./keysym.js";
-import * as browser from "../util/browser.js";
+import * as Log from '../util/logging';
+import { stopEvent } from '../util/events';
+import * as KeyboardUtil from "./util";
+import KeyTable from "./keysym";
+import * as browser from "../util/browser";
 
 //
 // Keyboard event handler

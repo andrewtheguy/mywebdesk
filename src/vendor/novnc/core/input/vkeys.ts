@@ -3,6 +3,7 @@
  * Copyright (C) 2018 The noVNC authors
  * Licensed under MPL 2.0 or any later version (see LICENSE.txt)
  */
+// @ts-nocheck
 
 /*
  * Mapping between Microsoft® Windows® Virtual-Key codes and

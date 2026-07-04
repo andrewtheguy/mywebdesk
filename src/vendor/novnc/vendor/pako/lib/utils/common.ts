@@ -1,3 +1,4 @@
+// @ts-nocheck
 // reduce buffer size, avoiding mem copy
 export function shrinkBuf (buf, size) {
   if (buf.length === size) { return buf; }

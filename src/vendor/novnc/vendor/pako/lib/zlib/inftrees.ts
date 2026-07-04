@@ -1,4 +1,5 @@
-import * as utils from "../utils/common.js";
+// @ts-nocheck
+import * as utils from "../utils/common";
 
 var MAXBITS = 15;
 var ENOUGH_LENS = 852;

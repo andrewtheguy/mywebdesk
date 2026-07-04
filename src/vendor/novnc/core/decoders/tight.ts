@@ -7,9 +7,10 @@
  * See README.md for usage and integration instructions.
  *
  */
+// @ts-nocheck
 
-import * as Log from '../util/logging.js';
-import Inflator from "../inflator.js";
+import * as Log from '../util/logging';
+import Inflator from "../inflator";
 
 export default class TightDecoder {
     constructor() {

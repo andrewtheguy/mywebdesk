@@ -1,3 +1,4 @@
+// @ts-nocheck
 export default {
   2:      'need dictionary',     /* Z_NEED_DICT       2  */
   1:      'stream end',          /* Z_STREAM_END      1  */

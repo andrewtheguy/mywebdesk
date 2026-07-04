@@ -156,3 +156,26 @@ TypeScript migration:
 - Removed `// @ts-nocheck` from `core/input/keyboard.ts`, typing its DOM
   event listener plumbing, legacy key-identification fallback, AltGr timeout
   state and nullable keysym path.
+- Removed the last `// @ts-nocheck` pragmas from `core/websock.ts`,
+  `core/display.ts`, `core/decoders/tight.ts` and `core/rfb.ts`; the whole
+  fork now type-checks under `strict`. Notable decisions:
+  - `websock.ts`: a local `RawChannel` interface (the subset of
+    `WebSocket`/`RTCDataChannel` the buffer wrapper drives) plus a named
+    `WebsockEventHandlers` map; receive/send queues are definite-assigned
+    (`_rQ!`/`_sQ!`, allocated in `_allocateBuffers`).
+  - `display.ts`: the render queue is a discriminated `RenderAction` union;
+    the vendor-prefixed `*ImageSmoothingEnabled` toggles use a local cast
+    (not in lib.dom); the pending-image `load` handler keeps its
+    `this`-bound-to-`<img>` semantics via an explicit `this: HTMLImageElement`
+    on `_resumeRenderQ` plus a module-local `HTMLImageElement._noVNCDisplay`
+    augmentation.
+  - `tight.ts`: local structural `TightSock`/`TightDisplay` interfaces (as in
+    `raw.ts`/`copyrect.ts`); `_zlibs` keeps the concrete `Inflator` type since
+    it is instantiated. `decodeRect` captures `_ctl` into a local so the
+    dispatch reads a plain `number` across the stream-reset method calls.
+  - `rfb.ts`: a shared `Decoder` interface backs `_decoders`; connection/init
+    states are string-literal unions; the post-class `RFB.messages = {…}` bag
+    became a `static messages` member; nullable-during-lifecycle deps stay
+    `| null` while constructor-owned singletons (`_sock`/`_display`/
+    `_resizeObserver`) are definite-assigned, and the debounce/timeout handles
+    switched from `null` to `undefined` so `clearTimeout` accepts them.

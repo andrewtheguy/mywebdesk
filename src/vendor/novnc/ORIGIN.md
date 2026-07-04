@@ -153,3 +153,6 @@ TypeScript migration:
   `core/util/strings.ts`, `core/decoders/copyrect.ts`,
   `core/decoders/raw.ts`, `core/input/util.ts`, `core/inflator.ts`, and
   `core/deflator.ts`.
+- Removed `// @ts-nocheck` from `core/input/keyboard.ts`, typing its DOM
+  event listener plumbing, legacy key-identification fallback, AltGr timeout
+  state and nullable keysym path.

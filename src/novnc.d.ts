@@ -32,7 +32,7 @@ declare module "@novnc-core/rfb" {
     readonly screenElement: HTMLDivElement;
 
     disconnect(): void;
-    sendKey(keysym: number, code: string | null, down?: boolean): void;
+    sendKey(keysym: number | null, code: string | null, down?: boolean): void;
     clipboardPasteFrom(text: string): void;
     setBaseScale(scale: number): void;
     requestResize(): void;
@@ -56,7 +56,7 @@ declare module "@novnc-core/input/keyboard" {
   export default class Keyboard {
     constructor(target: Element | Document);
     onkeyevent: (
-      keysym: number,
+      keysym: number | null,
       code: string,
       down: boolean,
       numlock?: boolean | null,

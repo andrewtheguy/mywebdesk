@@ -3,31 +3,57 @@
  * Copyright (C) 2019 The noVNC authors
  * Licensed under MPL 2.0 or any later version (see LICENSE.txt)
  */
-// @ts-nocheck
-
 import * as Log from '../util/logging';
 import { stopEvent } from '../util/events';
 import * as KeyboardUtil from "./util";
 import KeyTable from "./keysym";
 import * as browser from "../util/browser";
 
+type KeyboardEventHandler = (
+    keysym: number | null,
+    code: string,
+    down: boolean,
+    numlock?: boolean | null,
+    capslock?: boolean | null,
+) => void;
+
+type KeyboardEventHandlers = {
+    keyup: EventListener;
+    keydown: EventListener;
+    blur: EventListener;
+};
+
+interface LegacyKeyboardEvent extends KeyboardEvent {
+    keyIdentifier?: string;
+}
+
 //
 // Keyboard event handler
 //
 
 export default class Keyboard {
-    constructor(target) {
-        this._target = target || null;
+    private _target: Element | Document;
+    private _keyDownList: Partial<Record<string, number | null>>;
+    private _altGrArmed: boolean;
+    private _altGrTimeout: ReturnType<typeof setTimeout> | null;
+    private _altGrCtrlTime: number;
+    private _eventHandlers: KeyboardEventHandlers;
+    onkeyevent: KeyboardEventHandler;
+
+    constructor(target: Element | Document) {
+        this._target = target;
 
         this._keyDownList = {};         // List of depressed keys
                                         // (even if they are happy)
         this._altGrArmed = false;       // Windows AltGr detection
+        this._altGrTimeout = null;
+        this._altGrCtrlTime = 0;
 
         // keep these here so we can refer to them later
         this._eventHandlers = {
-            'keyup': this._handleKeyUp.bind(this),
-            'keydown': this._handleKeyDown.bind(this),
-            'blur': this._allKeysUp.bind(this),
+            'keyup': (event: Event) => { this._handleKeyUp(event as KeyboardEvent); },
+            'keydown': (event: Event) => { this._handleKeyDown(event as KeyboardEvent); },
+            'blur': () => { this._allKeysUp(); },
         };
 
         // ===== EVENT HANDLERS =====
@@ -37,7 +63,9 @@ export default class Keyboard {
 
     // ===== PRIVATE METHODS =====
 
-    _sendKeyEvent(keysym, code, down, numlock = null, capslock = null) {
+    _sendKeyEvent(keysym: number | null, code: string, down: boolean,
+                  numlock: boolean | null = null,
+                  capslock: boolean | null = null): void {
         if (down) {
             this._keyDownList[code] = keysym;
         } else {
@@ -54,7 +82,7 @@ export default class Keyboard {
         this.onkeyevent(keysym, code, down, numlock, capslock);
     }
 
-    _getKeyCode(e) {
+    _getKeyCode(e: LegacyKeyboardEvent): string {
         const code = KeyboardUtil.getKeycode(e);
         if (code !== 'Unidentified') {
             return code;
@@ -79,17 +107,17 @@ export default class Keyboard {
             const codepoint = parseInt(e.keyIdentifier.substr(2), 16);
             const char = String.fromCharCode(codepoint).toUpperCase();
 
-            return 'Platform' + char.charCodeAt();
+            return 'Platform' + char.charCodeAt(0);
         }
 
         return 'Unidentified';
     }
 
-    _handleKeyDown(e) {
+    _handleKeyDown(e: KeyboardEvent): void {
         const code = this._getKeyCode(e);
-        let keysym = KeyboardUtil.getKeysym(e);
-        let numlock = e.getModifierState('NumLock');
-        let capslock = e.getModifierState('CapsLock');
+        let keysym: number | null = KeyboardUtil.getKeysym(e);
+        let numlock: boolean | null = e.getModifierState('NumLock');
+        let capslock: boolean | null = e.getModifierState('CapsLock');
 
         // getModifierState for NumLock is not supported on mac and ios and always returns false.
         // Set to null to indicate unknown/unsupported instead.
@@ -104,7 +132,10 @@ export default class Keyboard {
         // each other with a very short time between them (<50ms).
         if (this._altGrArmed) {
             this._altGrArmed = false;
-            clearTimeout(this._altGrTimeout);
+            if (this._altGrTimeout !== null) {
+                clearTimeout(this._altGrTimeout);
+                this._altGrTimeout = null;
+            }
 
             if ((code === "AltRight") &&
                 ((e.timeStamp - this._altGrCtrlTime) < 50)) {
@@ -159,8 +190,9 @@ export default class Keyboard {
 
         // Is this key already pressed? If so, then we must use the
         // same keysym or we'll confuse the server
-        if (code in this._keyDownList) {
-            keysym = this._keyDownList[code];
+        const downKeysym = this._keyDownList[code];
+        if (downKeysym !== undefined) {
+            keysym = downKeysym;
         }
 
         // macOS doesn't send proper key releases if a key is pressed
@@ -191,7 +223,7 @@ export default class Keyboard {
                             KeyTable.XK_Katakana,
                             KeyTable.XK_Hiragana,
                             KeyTable.XK_Romaji ];
-        if (browser.isWindows() && jpBadKeys.includes(keysym)) {
+        if (keysym !== null && browser.isWindows() && jpBadKeys.includes(keysym)) {
             this._sendKeyEvent(keysym, code, true, numlock, capslock);
             this._sendKeyEvent(keysym, code, false, numlock, capslock);
             stopEvent(e);
@@ -212,7 +244,7 @@ export default class Keyboard {
         this._sendKeyEvent(keysym, code, true, numlock, capslock);
     }
 
-    _handleKeyUp(e) {
+    _handleKeyUp(e: KeyboardEvent): void {
         stopEvent(e);
 
         const code = this._getKeyCode(e);
@@ -228,47 +260,50 @@ export default class Keyboard {
             return;
         }
 
-        this._sendKeyEvent(this._keyDownList[code], code, false);
+        this._sendKeyEvent(this._keyDownList[code] ?? null, code, false);
 
         // Windows has a rather nasty bug where it won't send key
         // release events for a Shift button if the other Shift is still
         // pressed
         if (browser.isWindows() && ((code === 'ShiftLeft') ||
                                     (code === 'ShiftRight'))) {
-            if ('ShiftRight' in this._keyDownList) {
-                this._sendKeyEvent(this._keyDownList['ShiftRight'],
-                                   'ShiftRight', false);
+            const shiftRightKeysym = this._keyDownList['ShiftRight'];
+            if (shiftRightKeysym !== undefined) {
+                this._sendKeyEvent(shiftRightKeysym, 'ShiftRight', false);
             }
-            if ('ShiftLeft' in this._keyDownList) {
-                this._sendKeyEvent(this._keyDownList['ShiftLeft'],
-                                   'ShiftLeft', false);
+            const shiftLeftKeysym = this._keyDownList['ShiftLeft'];
+            if (shiftLeftKeysym !== undefined) {
+                this._sendKeyEvent(shiftLeftKeysym, 'ShiftLeft', false);
             }
         }
     }
 
-    _interruptAltGrSequence() {
+    _interruptAltGrSequence(): void {
         if (this._altGrArmed) {
             this._altGrArmed = false;
-            clearTimeout(this._altGrTimeout);
+            if (this._altGrTimeout !== null) {
+                clearTimeout(this._altGrTimeout);
+                this._altGrTimeout = null;
+            }
             this._sendKeyEvent(KeyTable.XK_Control_L, "ControlLeft", true);
         }
     }
 
-    _allKeysUp() {
+    _allKeysUp(): void {
         Log.Debug(">> Keyboard.allKeysUp");
 
         // Prevent control key being processed after losing focus.
         this._interruptAltGrSequence();
 
         for (let code in this._keyDownList) {
-            this._sendKeyEvent(this._keyDownList[code], code, false);
+            this._sendKeyEvent(this._keyDownList[code] ?? null, code, false);
         }
         Log.Debug("<< Keyboard.allKeysUp");
     }
 
     // ===== PUBLIC METHODS =====
 
-    grab() {
+    grab(): void {
         //Log.Debug(">> Keyboard.grab");
 
         this._target.addEventListener('keydown', this._eventHandlers.keydown);
@@ -280,7 +315,7 @@ export default class Keyboard {
         //Log.Debug("<< Keyboard.grab");
     }
 
-    ungrab() {
+    ungrab(): void {
         //Log.Debug(">> Keyboard.ungrab");
 
         this._target.removeEventListener('keydown', this._eventHandlers.keydown);

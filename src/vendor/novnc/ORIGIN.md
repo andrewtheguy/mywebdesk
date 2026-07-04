@@ -54,6 +54,10 @@ Further dead-for-this-app API removed from `core/rfb.js`:
   WebSocket channel (URL/`sock.open` path removed) and no options object
   (`shared` always 1, `repeaterID`/UltraVNC-repeater handshake and
   `wsProtocols` removed).
+- Decoders reduced to Tight, CopyRect and Raw (deleted
+  `core/decoders/{h264,hextile,rre,zlib,tightpng,zrle,jpeg}.js` and their
+  advertisements). A server may only send encodings the client advertises
+  (plus Raw, which is always allowed); TigerVNC picks Tight.
 
 App-specific behavior folded into `core/rfb.js` (formerly the `HiDpiRFB`
 subclass in the app):

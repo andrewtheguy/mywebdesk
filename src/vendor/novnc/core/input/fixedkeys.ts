@@ -16,7 +16,7 @@
 
 /* eslint-disable key-spacing */
 
-export default {
+const fixedkeys: Record<string, string> = {
 
 // 3.1.1.1. Writing System Keys
 
@@ -127,3 +127,5 @@ export default {
     'AudioVolumeUp':    'AudioVolumeUp',
     'WakeUp':           'WakeUp',
 };
+
+export default fixedkeys;

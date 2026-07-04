@@ -7,19 +7,19 @@
  *
  */
 
-import { toUnsigned32bit, toSigned32bit } from './util/int.js';
-import * as Log from './util/logging.js';
-import { encodeUTF8, decodeUTF8 } from './util/strings.js';
-import Display from "./display.js";
-import Inflator from "./inflator.js";
-import Deflator from "./deflator.js";
-import Websock from "./websock.js";
-import XtScancode from "./input/xtscancodes.js";
-import { encodings } from "./encodings.js";
+import { toUnsigned32bit, toSigned32bit } from './util/int';
+import * as Log from './util/logging';
+import { encodeUTF8, decodeUTF8 } from './util/strings';
+import Display from "./display";
+import Inflator from "./inflator";
+import Deflator from "./deflator";
+import Websock from "./websock";
+import XtScancode from "./input/xtscancodes";
+import { encodings } from "./encodings";
 
-import RawDecoder from "./decoders/raw.js";
-import CopyRectDecoder from "./decoders/copyrect.js";
-import TightDecoder from "./decoders/tight.js";
+import RawDecoder from "./decoders/raw";
+import CopyRectDecoder from "./decoders/copyrect";
+import TightDecoder from "./decoders/tight";
 
 // How many seconds to wait for a disconnect to finish
 const DISCONNECT_TIMEOUT = 3;
@@ -54,8 +54,88 @@ const extendedClipboardActionPeek    = 1 << 26;
 const extendedClipboardActionNotify  = 1 << 27;
 const extendedClipboardActionProvide = 1 << 28;
 
+interface FbSize {
+    width: number;
+    height: number;
+}
+
+// The common shape all rect decoders expose; the concrete Raw/CopyRect/Tight
+// decoders are structurally compatible (their sock/display params are supersets
+// of what Websock/Display provide).
+interface Decoder {
+    decodeRect(x: number, y: number, width: number, height: number, sock: Websock, display: Display, depth: number): boolean;
+}
+
+type ConnectionState = '' | 'connecting' | 'connected' | 'disconnecting' | 'disconnected';
+type InitState = '' | 'ProtocolVersion' | 'Security' | 'Authentication' |
+    'SecurityResult' | 'SecurityReason' | 'ClientInitialisation' | 'ServerInitialisation';
+
 export default class RFB extends EventTarget {
-    constructor(target, channel) {
+    // Public API
+    computeTargetSize: (() => FbSize) | null;
+
+    private _target: HTMLElement;
+    private _rawChannel: WebSocket | null;
+
+    private _rfbConnectionState: ConnectionState;
+    private _rfbInitState: InitState;
+    private _rfbAuthScheme: number;
+    private _rfbCleanDisconnect: boolean;
+    private _rfbVersion: number;
+    private _rfbMaxVersion: number;
+
+    private _fbWidth: number;
+    private _fbHeight: number;
+    private _fbName: string;
+    private _fbDepth!: number;
+
+    private _supportsFence: boolean;
+    private _supportsContinuousUpdates: boolean;
+    private _enabledContinuousUpdates: boolean;
+    private _supportsSetDesktopSize: boolean;
+    private _screenID: number;
+    private _screenFlags: number;
+    private _pendingRemoteResize: boolean;
+    private _lastResize: number;
+    private _qemuExtKeyEventSupported: boolean;
+
+    private _clipboardText: string | null;
+    private _clipboardServerCapabilitiesActions: Record<number, boolean>;
+    private _clipboardServerCapabilitiesFormats: Record<number, boolean>;
+
+    private _securityContext!: string;
+    private _securityStatus!: number;
+
+    private _sock!: Websock;
+    private _display!: Display;
+    private _flushing: boolean;
+    private _resizeObserver!: ResizeObserver;
+
+    private _disconnTimer: ReturnType<typeof setTimeout> | undefined;
+    private _resizeTimeout: ReturnType<typeof setTimeout> | undefined;
+    private _resizeRequestDebounce: ReturnType<typeof setTimeout> | undefined;
+
+    private _baseScale: number;
+    private _decoders: Record<number, Decoder>;
+
+    private _FBU: {
+        rects: number;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        encoding: number | null;
+    };
+
+    private _screen: HTMLDivElement;
+    private _canvas: HTMLCanvasElement;
+
+    private _expectedClientWidth: number | null;
+    private _expectedClientHeight: number | null;
+
+    private _resizeSession: boolean;
+
+    constructor(target: HTMLElement, channel: WebSocket) {
         if (!target) {
             throw new Error("Must specify target");
         }
@@ -106,16 +186,13 @@ export default class RFB extends EventTarget {
         this._clipboardServerCapabilitiesActions = {};
         this._clipboardServerCapabilitiesFormats = {};
 
-        // Internal objects
-        this._sock = null;              // Websock object
-        this._display = null;           // Display object
+        // Internal objects (_sock/_display/_resizeObserver are created below)
         this._flushing = false;         // Display flushing state
-        this._resizeObserver = null;    // Resize observer object
 
         // Timers
-        this._disconnTimer = null;      // disconnection timer
-        this._resizeTimeout = null;     // resize rate limiting
-        this._resizeRequestDebounce = null; // remote-resize debounce
+        this._disconnTimer = undefined;      // disconnection timer
+        this._resizeTimeout = undefined;     // resize rate limiting
+        this._resizeRequestDebounce = undefined; // remote-resize debounce
 
         // Display scale controlled by the app via setBaseScale() (stock
         // noVNC forced 1.0 unless scaleViewport autoscaled to the container)
@@ -161,7 +238,7 @@ export default class RFB extends EventTarget {
         try {
             this._display = new Display(this._canvas);
         } catch (exc) {
-            Log.Error("Display exception: " + exc);
+            Log.Error("Display exception: " + String(exc));
             throw exc;
         }
 
@@ -192,8 +269,8 @@ export default class RFB extends EventTarget {
 
     // ===== PROPERTIES =====
 
-    get resizeSession() { return this._resizeSession; }
-    set resizeSession(resize) {
+    get resizeSession(): boolean { return this._resizeSession; }
+    set resizeSession(resize: boolean) {
         this._resizeSession = resize;
         if (resize) {
             this._requestRemoteResize();
@@ -211,7 +288,7 @@ export default class RFB extends EventTarget {
 
     // Send a key press. If 'down' is not specified then send a down key
     // followed by an up key.
-    sendKey(keysym, code, down) {
+    sendKey(keysym: number | null, code: string | null, down?: boolean): void {
         if (this._rfbConnectionState !== 'connected') { return; }
 
         if (down === undefined) {
@@ -220,7 +297,7 @@ export default class RFB extends EventTarget {
             return;
         }
 
-        const scancode = XtScancode[code];
+        const scancode = code === null ? undefined : XtScancode[code];
 
         if (this._qemuExtKeyEventSupported && scancode) {
             // 0 is NoSymbol
@@ -238,7 +315,7 @@ export default class RFB extends EventTarget {
         }
     }
 
-    clipboardPasteFrom(text) {
+    clipboardPasteFrom(text: string): void {
         if (this._rfbConnectionState !== 'connected') { return; }
 
         if (this._clipboardServerCapabilitiesFormats[extendedClipboardFormatText] &&
@@ -260,7 +337,7 @@ export default class RFB extends EventTarget {
 
             i = 0;
             for (let codePoint of text) {
-                let code = codePoint.codePointAt(0);
+                let code = codePoint.codePointAt(0)!;
 
                 /* Only ISO 8859-1 is supported */
                 if (code > 0xff) {
@@ -276,18 +353,18 @@ export default class RFB extends EventTarget {
 
     // Sets the display scale directly; _updateScale() keeps reapplying it
     // when noVNC's ResizeObserver or a framebuffer resize reruns scaling.
-    setBaseScale(scale) {
+    setBaseScale(scale: number): void {
         this._baseScale = scale;
         this._display.scale = scale;
     }
 
     // Safe to call repeatedly: rate-limited to one pending request per
     // 100ms and a no-op when the framebuffer already matches the target.
-    requestResize() {
+    requestResize(): void {
         this._requestRemoteResize();
     }
 
-    sendPointer(x, y, buttonMask) {
+    sendPointer(x: number, y: number, buttonMask: number): void {
         if (this._rfbConnectionState !== 'connected') { return; }
         // Pointer coordinates are unsigned 16-bit on the wire; clamp to the
         // framebuffer so letterbox-area events can't wrap around.
@@ -299,13 +376,13 @@ export default class RFB extends EventTarget {
                                   buttonMask);
     }
 
-    get connected() { return this._rfbConnectionState === 'connected'; }
+    get connected(): boolean { return this._rfbConnectionState === 'connected'; }
 
-    get fbSize() { return { width: this._fbWidth, height: this._fbHeight }; }
+    get fbSize(): FbSize { return { width: this._fbWidth, height: this._fbHeight }; }
 
-    get canvasElement() { return this._canvas; }
+    get canvasElement(): HTMLCanvasElement { return this._canvas; }
 
-    get screenElement() { return this._screen; }
+    get screenElement(): HTMLDivElement { return this._screen; }
 
     // ===== PRIVATE METHODS =====
 
@@ -313,7 +390,7 @@ export default class RFB extends EventTarget {
         Log.Debug(">> RFB.connect");
 
         Log.Info(`attaching ${this._rawChannel} to Websock`);
-        this._sock.attach(this._rawChannel);
+        this._sock.attach(this._rawChannel!);
 
         if (this._sock.readyState === 'closed') {
             throw Error("Cannot use already closed WebSocket channel");
@@ -345,7 +422,7 @@ export default class RFB extends EventTarget {
         try {
             this._target.removeChild(this._screen);
         } catch (e) {
-            if (e.name === 'NotFoundError') {
+            if ((e as DOMException).name === 'NotFoundError') {
                 // Some cases where the initial connection fails
                 // can disconnect before the _screen is created
             } else {
@@ -368,7 +445,7 @@ export default class RFB extends EventTarget {
         }
     }
 
-    _socketClose(e) {
+    _socketClose(e: CloseEvent): void {
         Log.Debug("WebSocket on-close event");
         let msg = "";
         if (e.code) {
@@ -405,11 +482,11 @@ export default class RFB extends EventTarget {
         this._rawChannel = null;
     }
 
-    _socketError(e) {
+    _socketError(e: Event): void {
         Log.Warn("WebSocket on-error event");
     }
 
-    _setDesktopName(name) {
+    _setDesktopName(name: string): void {
         this._fbName = name;
         this.dispatchEvent(new CustomEvent(
             "desktopname",
@@ -486,7 +563,7 @@ export default class RFB extends EventTarget {
                                              100 - (Date.now() - this._lastResize));
             return;
         }
-        this._resizeTimeout = null;
+        this._resizeTimeout = undefined;
 
         const size = this._screenSize();
 
@@ -524,7 +601,7 @@ export default class RFB extends EventTarget {
      *   disconnecting
      *   disconnected - permanent state
      */
-    _updateConnectionState(state) {
+    _updateConnectionState(state: ConnectionState): void {
         const oldstate = this._rfbConnectionState;
 
         if (state === oldstate) {
@@ -586,7 +663,7 @@ export default class RFB extends EventTarget {
         if (this._disconnTimer && state !== 'disconnecting') {
             Log.Debug("Clearing disconnect timer");
             clearTimeout(this._disconnTimer);
-            this._disconnTimer = null;
+            this._disconnTimer = undefined;
 
             // make sure we don't get a double event
             this._sock.off('close');
@@ -623,7 +700,7 @@ export default class RFB extends EventTarget {
      * The parameter 'details' is used for information that
      * should be logged but not sent to the user interface.
      */
-    _fail(details) {
+    _fail(details: string): boolean {
         switch (this._rfbConnectionState) {
             case 'disconnecting':
                 Log.Error("Failed when disconnecting: " + details);
@@ -715,7 +792,7 @@ export default class RFB extends EventTarget {
             this._rfbVersion = this._rfbMaxVersion;
         }
 
-        const cversion = "00" + parseInt(this._rfbVersion, 10) +
+        const cversion = "00" + parseInt(String(this._rfbVersion), 10) +
                        ".00" + ((this._rfbVersion * 10) % 10);
         this._sock.sQpushString("RFB " + cversion + "\n");
         this._sock.flush();
@@ -724,7 +801,7 @@ export default class RFB extends EventTarget {
         this._rfbInitState = 'Security';
     }
 
-    _isSupportedSecurityType(type) {
+    _isSupportedSecurityType(type: number): boolean {
         return type === securityTypeNone;
     }
 
@@ -1092,7 +1169,7 @@ export default class RFB extends EventTarget {
                 // FIXME: Should probably verify that this data was actually requested
                 let zlibStream = this._sock.rQshiftBytes(length - 4);
                 let streamInflator = new Inflator();
-                let textData = null;
+                let textData: Uint8Array | null = null;
 
                 streamInflator.setInput(zlibStream);
                 for (let i = 0; i <= 15; i++) {
@@ -1121,18 +1198,17 @@ export default class RFB extends EventTarget {
                     for (let i = 0; i < textData.length; i++) {
                         tmpText += String.fromCharCode(textData[i]);
                     }
-                    textData = tmpText;
 
-                    textData = decodeUTF8(textData);
-                    if ((textData.length > 0) && "\0" === textData.charAt(textData.length - 1)) {
-                        textData = textData.slice(0, -1);
+                    let decoded = decodeUTF8(tmpText);
+                    if ((decoded.length > 0) && "\0" === decoded.charAt(decoded.length - 1)) {
+                        decoded = decoded.slice(0, -1);
                     }
 
-                    textData = textData.replaceAll("\r\n", "\n");
+                    decoded = decoded.replaceAll("\r\n", "\n");
 
                     this.dispatchEvent(new CustomEvent(
                         "clipboard",
-                        { detail: { text: textData } }));
+                        { detail: { text: decoded } }));
                 }
             } else {
                 return this._fail("Unexpected action in extended clipboard message: " + actions);
@@ -1416,8 +1492,8 @@ export default class RFB extends EventTarget {
         return true;
     }
 
-    _handleDataRect() {
-        let decoder = this._decoders[this._FBU.encoding];
+    _handleDataRect(): boolean {
+        let decoder = this._decoders[this._FBU.encoding!];
         if (!decoder) {
             this._fail("Unsupported encoding (encoding: " +
                        this._FBU.encoding + ")");
@@ -1430,7 +1506,7 @@ export default class RFB extends EventTarget {
                                       this._sock, this._display,
                                       this._fbDepth);
         } catch (err) {
-            this._fail("Error decoding rect: " + err);
+            this._fail("Error decoding rect: " + String(err));
             return false;
         }
     }
@@ -1443,7 +1519,7 @@ export default class RFB extends EventTarget {
     }
 
     // Handle resize-messages from the server
-    _resize(width, height) {
+    _resize(width: number, height: number): void {
         this._fbWidth = width;
         this._fbHeight = height;
 
@@ -1461,11 +1537,10 @@ export default class RFB extends EventTarget {
             "fbresize",
             { detail: { width: width, height: height } }));
     }
-}
 
-// Class Methods
-RFB.messages = {
-    keyEvent(sock, keysym, down) {
+    // Class Methods
+    static messages = {
+    keyEvent(sock: Websock, keysym: number, down: number) {
         sock.sQpush8(4); // msg-type
         sock.sQpush8(down);
 
@@ -1476,8 +1551,8 @@ RFB.messages = {
         sock.flush();
     },
 
-    QEMUExtendedKeyEvent(sock, keysym, down, keycode) {
-        function getRFBkeycode(xtScanCode) {
+    QEMUExtendedKeyEvent(sock: Websock, keysym: number, down: boolean, keycode: number) {
+        function getRFBkeycode(xtScanCode: number): number {
             const upperByte = (keycode >> 8);
             const lowerByte = (keycode & 0x00ff);
             if (upperByte === 0xe0 && lowerByte < 0x7f) {
@@ -1489,7 +1564,7 @@ RFB.messages = {
         sock.sQpush8(255); // msg-type
         sock.sQpush8(0); // sub msg-type
 
-        sock.sQpush16(down);
+        sock.sQpush16(down ? 1 : 0);
 
         sock.sQpush32(keysym);
 
@@ -1500,7 +1575,7 @@ RFB.messages = {
         sock.flush();
     },
 
-    pointerEvent(sock, x, y, mask) {
+    pointerEvent(sock: Websock, x: number, y: number, mask: number) {
         sock.sQpush8(5); // msg-type
 
         // Marker bit must be set to 0, otherwise the server might
@@ -1516,7 +1591,7 @@ RFB.messages = {
     },
 
     // Used to build Notify and Request data.
-    _buildExtendedClipboardFlags(actions, formats) {
+    _buildExtendedClipboardFlags(actions: number[], formats: number[]) {
         let data = new Uint8Array(4);
         let formatFlag = 0x00000000;
         let actionFlag = 0x00000000;
@@ -1537,7 +1612,7 @@ RFB.messages = {
         return data;
     },
 
-    extendedClipboardProvide(sock, formats, inData) {
+    extendedClipboardProvide(sock: Websock, formats: number[], inData: string[]) {
         // Deflate incomming data and their sizes
         let deflator = new Deflator();
         let dataToDeflate = [];
@@ -1575,24 +1650,24 @@ RFB.messages = {
         RFB.messages.clientCutText(sock, data, true);
     },
 
-    extendedClipboardNotify(sock, formats) {
+    extendedClipboardNotify(sock: Websock, formats: number[]) {
         let flags = RFB.messages._buildExtendedClipboardFlags([extendedClipboardActionNotify],
                                                               formats);
         RFB.messages.clientCutText(sock, flags, true);
     },
 
-    extendedClipboardRequest(sock, formats) {
+    extendedClipboardRequest(sock: Websock, formats: number[]) {
         let flags = RFB.messages._buildExtendedClipboardFlags([extendedClipboardActionRequest],
                                                               formats);
         RFB.messages.clientCutText(sock, flags, true);
     },
 
-    extendedClipboardCaps(sock, actions, formats) {
+    extendedClipboardCaps(sock: Websock, actions: number[], formats: Record<string, number>) {
         let formatKeys = Object.keys(formats);
         let data  = new Uint8Array(4 + (4 * formatKeys.length));
 
         formatKeys.map(x => parseInt(x));
-        formatKeys.sort((a, b) =>  a - b);
+        formatKeys.sort((a, b) =>  Number(a) - Number(b));
 
         data.set(RFB.messages._buildExtendedClipboardFlags(actions, []));
 
@@ -1604,13 +1679,13 @@ RFB.messages = {
             data[loopOffset + 3] = formats[formatKeys[i]] >> 0;
 
             loopOffset += 4;
-            data[3] |= (1 << formatKeys[i]); // Update our format flags
+            data[3] |= (1 << Number(formatKeys[i])); // Update our format flags
         }
 
         RFB.messages.clientCutText(sock, data, true);
     },
 
-    clientCutText(sock, data, extended = false) {
+    clientCutText(sock: Websock, data: Uint8Array, extended = false) {
         sock.sQpush8(6); // msg-type
 
         sock.sQpush8(0); // padding
@@ -1629,7 +1704,7 @@ RFB.messages = {
         sock.flush();
     },
 
-    setDesktopSize(sock, width, height, id, flags) {
+    setDesktopSize(sock: Websock, width: number, height: number, id: number, flags: number) {
         sock.sQpush8(251); // msg-type
 
         sock.sQpush8(0); // padding
@@ -1652,7 +1727,7 @@ RFB.messages = {
         sock.flush();
     },
 
-    clientFence(sock, flags, payload) {
+    clientFence(sock: Websock, flags: number, payload: string) {
         sock.sQpush8(248); // msg-type
 
         sock.sQpush8(0); // padding
@@ -1667,10 +1742,10 @@ RFB.messages = {
         sock.flush();
     },
 
-    enableContinuousUpdates(sock, enable, x, y, width, height) {
+    enableContinuousUpdates(sock: Websock, enable: boolean, x: number, y: number, width: number, height: number) {
         sock.sQpush8(150); // msg-type
 
-        sock.sQpush8(enable);
+        sock.sQpush8(enable ? 1 : 0);
 
         sock.sQpush16(x);
         sock.sQpush16(y);
@@ -1680,7 +1755,7 @@ RFB.messages = {
         sock.flush();
     },
 
-    pixelFormat(sock, depth, trueColor) {
+    pixelFormat(sock: Websock, depth: number, trueColor: boolean) {
         let bpp;
 
         if (depth > 16) {
@@ -1719,7 +1794,7 @@ RFB.messages = {
         sock.flush();
     },
 
-    clientEncodings(sock, encodings) {
+    clientEncodings(sock: Websock, encodings: number[]) {
         sock.sQpush8(2); // msg-type
 
         sock.sQpush8(0); // padding
@@ -1732,7 +1807,7 @@ RFB.messages = {
         sock.flush();
     },
 
-    fbUpdateRequest(sock, incremental, x, y, w, h) {
+    fbUpdateRequest(sock: Websock, incremental: boolean, x: number, y: number, w: number, h: number) {
         if (typeof(x) === "undefined") { x = 0; }
         if (typeof(y) === "undefined") { y = 0; }
 
@@ -1747,5 +1822,6 @@ RFB.messages = {
 
         sock.flush();
     }
-};
+    };
+}
 

@@ -1,7 +1,7 @@
 {
   "name": "mywebdesk",
   "private": true,
-  "version": "0.0.4",
+  "version": "0.0.5",
   "type": "module",
   "scripts": {
     "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "express": "^5.2.1",
+    "pako": "^3.0.0",
     "react": "^19",
     "react-dom": "^19",
     "ws": "^8.18.0"

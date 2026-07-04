@@ -4,13 +4,12 @@
 - Source: npm package `@novnc/novnc@1.7.0` (copied byte-identical, then locally
   modified as recorded below)
 - License: MPL-2.0 (see `LICENSE.txt`; per-file headers must be preserved).
-  The bundled pako (zlib) sources under `vendor/pako/` carry their own license
-  (`vendor/pako/LICENSE`).
+  zlib support now comes from the external npm package `pako` (MIT).
 
 ## Omitted upstream files
 
-- `vendor/pako/lib/zlib/constants.js`, `vendor/pako/lib/zlib/gzheader.js` —
-  not imported by anything in `core/`.
+- The entire bundled `vendor/pako/` subtree was removed; `core/inflator.ts`
+  and `core/deflator.ts` import `pako`'s public low-level zlib exports instead.
 
 ## Local modifications
 
@@ -137,3 +136,46 @@ subclass in the app):
   and getters `connected`, `fbSize`, `canvasElement`, `screenElement`.
 
 The fork's public API is declared in `src/novnc.d.ts`.
+
+TypeScript migration:
+
+- Renamed the remaining vendored JavaScript modules under this fork from
+  `.js` to `.ts`, updated internal import specifiers to extensionless module
+  paths, and initially added `// @ts-nocheck` pragmas after existing file
+  headers so the fork remained behaviorally unchanged while being consumed as
+  TypeScript.
+- Removed `// @ts-nocheck` from the constant/data modules and added focused
+  table types: `core/encodings.ts`, `core/input/{domkeytable,fixedkeys,keysym,
+  keysymdef,vkeys,xtscancodes}.ts`.
+- Removed `// @ts-nocheck` from the next small helper modules and added narrow
+  signatures/local interfaces: `core/util/browser.ts`,
+  `core/util/events.ts`, `core/util/int.ts`, `core/util/logging.ts`,
+  `core/util/strings.ts`, `core/decoders/copyrect.ts`,
+  `core/decoders/raw.ts`, `core/input/util.ts`, `core/inflator.ts`, and
+  `core/deflator.ts`.
+- Removed `// @ts-nocheck` from `core/input/keyboard.ts`, typing its DOM
+  event listener plumbing, legacy key-identification fallback, AltGr timeout
+  state and nullable keysym path.
+- Removed the last `// @ts-nocheck` pragmas from `core/websock.ts`,
+  `core/display.ts`, `core/decoders/tight.ts` and `core/rfb.ts`; the whole
+  fork now type-checks under `strict`. Notable decisions:
+  - `websock.ts`: a local `RawChannel` interface (the subset of
+    `WebSocket`/`RTCDataChannel` the buffer wrapper drives) plus a named
+    `WebsockEventHandlers` map; receive/send queues are definite-assigned
+    (`_rQ!`/`_sQ!`, allocated in `_allocateBuffers`).
+  - `display.ts`: the render queue is a discriminated `RenderAction` union;
+    the vendor-prefixed `*ImageSmoothingEnabled` toggles use a local cast
+    (not in lib.dom); the pending-image `load` handler keeps its
+    `this`-bound-to-`<img>` semantics via an explicit `this: HTMLImageElement`
+    on `_resumeRenderQ` plus a module-local `HTMLImageElement._noVNCDisplay`
+    augmentation.
+  - `tight.ts`: local structural `TightSock`/`TightDisplay` interfaces (as in
+    `raw.ts`/`copyrect.ts`); `_zlibs` keeps the concrete `Inflator` type since
+    it is instantiated. `decodeRect` captures `_ctl` into a local so the
+    dispatch reads a plain `number` across the stream-reset method calls.
+  - `rfb.ts`: a shared `Decoder` interface backs `_decoders`; connection/init
+    states are string-literal unions; the post-class `RFB.messages = {…}` bag
+    became a `static messages` member; nullable-during-lifecycle deps stay
+    `| null` while constructor-owned singletons (`_sock`/`_display`/
+    `_resizeObserver`) are definite-assigned, and the debounce/timeout handles
+    switched from `null` to `undefined` so `clearTimeout` accepts them.

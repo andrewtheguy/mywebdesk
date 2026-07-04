@@ -6,19 +6,32 @@
  * See README.md for usage and integration instructions.
  */
 
-import { inflateInit, inflate, inflateReset } from "../vendor/pako/lib/zlib/inflate.js";
-import ZStream from "../vendor/pako/lib/zlib/zstream.js";
+import {
+    Z_NO_FLUSH,
+    ZStream,
+    zlibInflate,
+    zlibInflateInit,
+    zlibInflateReset,
+} from "pako";
+
+type RfbZStream = Omit<ZStream, "input" | "output"> & {
+    input: Uint8Array | null;
+    output: Uint8Array;
+};
 
 export default class Inflate {
+    private strm: RfbZStream;
+    private chunkSize: number;
+
     constructor() {
-        this.strm = new ZStream();
+        this.strm = new ZStream() as RfbZStream;
         this.chunkSize = 1024 * 10 * 10;
         this.strm.output = new Uint8Array(this.chunkSize);
 
-        inflateInit(this.strm);
+        zlibInflateInit(this.strm as ZStream);
     }
 
-    setInput(data) {
+    setInput(data: Uint8Array | null) {
         if (!data) {
             //FIXME: flush remaining data.
             /* eslint-disable camelcase */
@@ -33,7 +46,7 @@ export default class Inflate {
         }
     }
 
-    inflate(expected) {
+    inflate(expected: number): Uint8Array {
         // resize our output buffer if it's too small
         // (we could just use multiple chunks, but that would cause an extra
         // allocation each time to flatten the chunks)
@@ -47,7 +60,7 @@ export default class Inflate {
         this.strm.avail_out = expected;
         /* eslint-enable camelcase */
 
-        let ret = inflate(this.strm, 0); // Flush argument not used.
+        let ret = zlibInflate(this.strm as ZStream, Z_NO_FLUSH);
         if (ret < 0) {
             throw new Error("zlib inflate failed");
         }
@@ -59,7 +72,7 @@ export default class Inflate {
         return new Uint8Array(this.strm.output.buffer, 0, this.strm.next_out);
     }
 
-    reset() {
-        inflateReset(this.strm);
+    reset(): void {
+        zlibInflateReset(this.strm as ZStream);
     }
 }

@@ -8,10 +8,35 @@
  *
  */
 
-import * as Log from '../util/logging.js';
-import Inflator from "../inflator.js";
+import * as Log from '../util/logging';
+import Inflator from "../inflator";
+
+// The subset of Websock the Tight decoder reads from.
+interface TightSock {
+    rQwait(msg: string, num: number): boolean;
+    rQshift8(): number;
+    rQpeek8(): number;
+    rQskipBytes(bytes: number): void;
+    rQshiftBytes(len: number, copy?: boolean): Uint8Array;
+    rQshiftTo(target: Uint8Array, len: number): void;
+}
+
+// The subset of Display the Tight decoder draws to.
+interface TightDisplay {
+    fillRect(x: number, y: number, width: number, height: number, color: number[] | Uint8Array, fromQueue: boolean): void;
+    imageRect(x: number, y: number, width: number, height: number, mime: string, arr: Uint8Array): void;
+    blitImage(x: number, y: number, width: number, height: number, data: Uint8Array, offset: number, fromQueue: boolean): void;
+}
 
 export default class TightDecoder {
+    private _ctl: number | null;
+    private _filter: number | null;
+    private _numColors: number;
+    private _palette: Uint8Array;
+    private _len: number;
+    private _zlibs: Inflator[];
+    private _scratchBuffer?: Uint8Array;
+
     constructor() {
         this._ctl = null;
         this._filter = null;
@@ -25,43 +50,47 @@ export default class TightDecoder {
         }
     }
 
-    decodeRect(x, y, width, height, sock, display, depth) {
+    decodeRect(x: number, y: number, width: number, height: number, sock: TightSock, display: TightDisplay, depth: number): boolean {
         if (this._ctl === null) {
             if (sock.rQwait("TIGHT compression-control", 1)) {
                 return false;
             }
 
-            this._ctl = sock.rQshift8();
+            let ctl = sock.rQshift8();
 
             // Reset streams if the server requests it
             for (let i = 0; i < 4; i++) {
-                if ((this._ctl >> i) & 1) {
+                if ((ctl >> i) & 1) {
                     this._zlibs[i].reset();
                     Log.Info("Reset zlib stream " + i);
                 }
             }
 
             // Figure out filter
-            this._ctl = this._ctl >> 4;
+            this._ctl = ctl >> 4;
         }
+
+        // _ctl is now known to be set (either just read, or carried from a
+        // prior partial call); capture it so the dispatch reads a plain number.
+        const ctl = this._ctl;
 
         let ret;
 
-        if (this._ctl === 0x08) {
+        if (ctl === 0x08) {
             ret = this._fillRect(x, y, width, height,
                                  sock, display, depth);
-        } else if (this._ctl === 0x09) {
+        } else if (ctl === 0x09) {
             ret = this._jpegRect(x, y, width, height,
                                  sock, display, depth);
-        } else if (this._ctl === 0x0A) {
+        } else if (ctl === 0x0A) {
             ret = this._pngRect(x, y, width, height,
                                 sock, display, depth);
-        } else if ((this._ctl & 0x08) == 0) {
-            ret = this._basicRect(this._ctl, x, y, width, height,
+        } else if ((ctl & 0x08) == 0) {
+            ret = this._basicRect(ctl, x, y, width, height,
                                   sock, display, depth);
         } else {
             throw new Error("Illegal tight compression received (ctl: " +
-                                   this._ctl + ")");
+                                   ctl + ")");
         }
 
         if (ret) {
@@ -71,7 +100,7 @@ export default class TightDecoder {
         return ret;
     }
 
-    _fillRect(x, y, width, height, sock, display, depth) {
+    _fillRect(x: number, y: number, width: number, height: number, sock: TightSock, display: TightDisplay, depth: number): boolean {
         if (sock.rQwait("TIGHT", 3)) {
             return false;
         }
@@ -82,7 +111,7 @@ export default class TightDecoder {
         return true;
     }
 
-    _jpegRect(x, y, width, height, sock, display, depth) {
+    _jpegRect(x: number, y: number, width: number, height: number, sock: TightSock, display: TightDisplay, depth: number): boolean {
         let data = this._readData(sock);
         if (data === null) {
             return false;
@@ -93,11 +122,11 @@ export default class TightDecoder {
         return true;
     }
 
-    _pngRect(x, y, width, height, sock, display, depth) {
+    _pngRect(x: number, y: number, width: number, height: number, sock: TightSock, display: TightDisplay, depth: number): boolean {
         throw new Error("PNG received in standard Tight rect");
     }
 
-    _basicRect(ctl, x, y, width, height, sock, display, depth) {
+    _basicRect(ctl: number, x: number, y: number, width: number, height: number, sock: TightSock, display: TightDisplay, depth: number): boolean {
         if (this._filter === null) {
             if (ctl & 0x4) {
                 if (sock.rQwait("TIGHT", 1)) {
@@ -140,9 +169,9 @@ export default class TightDecoder {
         return ret;
     }
 
-    _copyFilter(streamId, x, y, width, height, sock, display, depth) {
+    _copyFilter(streamId: number, x: number, y: number, width: number, height: number, sock: TightSock, display: TightDisplay, depth: number): boolean {
         const uncompressedSize = width * height * 3;
-        let data;
+        let data: Uint8Array | null;
 
         if (uncompressedSize === 0) {
             return true;
@@ -178,7 +207,7 @@ export default class TightDecoder {
         return true;
     }
 
-    _paletteFilter(streamId, x, y, width, height, sock, display, depth) {
+    _paletteFilter(streamId: number, x: number, y: number, width: number, height: number, sock: TightSock, display: TightDisplay, depth: number): boolean {
         if (this._numColors === 0) {
             if (sock.rQwait("TIGHT palette", 1)) {
                 return false;
@@ -201,7 +230,7 @@ export default class TightDecoder {
         const rowSize = Math.floor((width * bpp + 7) / 8);
         const uncompressedSize = rowSize * height;
 
-        let data;
+        let data: Uint8Array | null;
 
         if (uncompressedSize === 0) {
             return true;
@@ -236,7 +265,7 @@ export default class TightDecoder {
         return true;
     }
 
-    _monoRect(x, y, width, height, data, palette, display) {
+    _monoRect(x: number, y: number, width: number, height: number, data: Uint8Array, palette: Uint8Array, display: TightDisplay): void {
         // Convert indexed (palette based) image data to RGB
         // TODO: reduce number of calculations inside loop
         const dest = this._getScratchBuffer(width * height * 4);
@@ -269,7 +298,7 @@ export default class TightDecoder {
         display.blitImage(x, y, width, height, dest, 0, false);
     }
 
-    _paletteRect(x, y, width, height, data, palette, display) {
+    _paletteRect(x: number, y: number, width: number, height: number, data: Uint8Array, palette: Uint8Array, display: TightDisplay): void {
         // Convert indexed (palette based) image data to RGB
         const dest = this._getScratchBuffer(width * height * 4);
         const total = width * height * 4;
@@ -284,10 +313,10 @@ export default class TightDecoder {
         display.blitImage(x, y, width, height, dest, 0, false);
     }
 
-    _gradientFilter(streamId, x, y, width, height, sock, display, depth) {
+    _gradientFilter(streamId: number, x: number, y: number, width: number, height: number, sock: TightSock, display: TightDisplay, depth: number): boolean {
         // assume the TPIXEL is 3 bytes long
         const uncompressedSize = width * height * 3;
-        let data;
+        let data: Uint8Array | null;
 
         if (uncompressedSize === 0) {
             return true;
@@ -354,7 +383,7 @@ export default class TightDecoder {
         return true;
     }
 
-    _readData(sock) {
+    _readData(sock: TightSock): Uint8Array | null {
         if (this._len === 0) {
             if (sock.rQwait("TIGHT", 3)) {
                 return null;
@@ -384,7 +413,7 @@ export default class TightDecoder {
         return data;
     }
 
-    _getScratchBuffer(size) {
+    _getScratchBuffer(size: number): Uint8Array {
         if (!this._scratchBuffer || (this._scratchBuffer.length < size)) {
             this._scratchBuffer = new Uint8Array(size);
         }

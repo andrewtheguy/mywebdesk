@@ -10,15 +10,15 @@
 
 /* OS */
 
-export function isMac() {
+export function isMac(): boolean {
     return !!(/mac/i).exec(navigator.platform);
 }
 
-export function isWindows() {
+export function isWindows(): boolean {
     return !!(/win/i).exec(navigator.platform);
 }
 
-export function isIOS() {
+export function isIOS(): boolean {
     return (!!(/ipad/i).exec(navigator.platform) ||
             !!(/iphone/i).exec(navigator.platform) ||
             !!(/ipod/i).exec(navigator.platform));

@@ -1,5 +1,5 @@
-import Keyboard from "@novnc-core/input/keyboard.js";
-import RFB from "@novnc-core/rfb.js";
+import Keyboard from "@novnc-core/input/keyboard";
+import RFB from "@novnc-core/rfb";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseConnectionConfig } from "./connectionConfig";
 import { computeResizeTarget } from "./resizeSizing";

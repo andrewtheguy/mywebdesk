@@ -5,7 +5,6 @@
  *
  * See README.md for usage and integration instructions.
  */
-
 export const encodings = {
     encodingRaw: 0,
     encodingCopyRect: 1,
@@ -21,4 +20,4 @@ export const encodings = {
     pseudoEncodingContinuousUpdates: -313,
     pseudoEncodingCompressLevel0: -256,
     pseudoEncodingExtendedClipboard: 0xc0a1e5ce
-};
+} as const;

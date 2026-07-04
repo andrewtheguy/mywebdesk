@@ -10,7 +10,7 @@
  * Event helpers
  */
 
-export function stopEvent(e) {
+export function stopEvent(e: Event): void {
     e.stopPropagation();
     e.preventDefault();
 }

@@ -41,7 +41,15 @@ const VNC_HOST = process.env.VNC_HOST || "127.0.0.1";
 const VNC_PORT = Number.parseInt(process.env.VNC_PORT || "5901", 10);
 const VNC_PASSWORD = process.env.VNC_PASSWORD || "";
 
-const COOKIE_FLAGS = "HttpOnly; SameSite=Strict; Path=/; Secure";
+const COOKIE_FLAGS = "HttpOnly; SameSite=Strict; Path=/";
+
+// Secure cookies set over plain HTTP are silently dropped by Safari (even on
+// localhost, unlike Chrome), so only add the flag when the request actually
+// arrived over HTTPS — directly or via a TLS-terminating proxy/tunnel.
+function cookieFlags(req: express.Request): string {
+  const isHttps = req.secure || req.headers["x-forwarded-proto"] === "https";
+  return isHttps ? `${COOKIE_FLAGS}; Secure` : COOKIE_FLAGS;
+}
 
 // --- Public auth routes ---
 
@@ -59,7 +67,7 @@ app.post("/api/auth/login", async (req, res) => {
   const token = createSession(username);
   res.setHeader(
     "Set-Cookie",
-    `${getSessionCookieName()}=${token}; ${COOKIE_FLAGS}`,
+    `${getSessionCookieName()}=${token}; ${cookieFlags(req)}`,
   );
   res.json({ ok: true });
 });
@@ -71,7 +79,7 @@ app.post("/api/auth/logout", (req, res) => {
   }
   res.setHeader(
     "Set-Cookie",
-    `${getSessionCookieName()}=; ${COOKIE_FLAGS}; Max-Age=0`,
+    `${getSessionCookieName()}=; ${cookieFlags(req)}; Max-Age=0`,
   );
   res.json({ ok: true });
 });
@@ -153,9 +161,18 @@ if (isProduction) {
     const assetPath = embeddedAssets.get(req.path);
     if (assetPath) {
       const file = Bun.file(assetPath);
-      res.setHeader("Content-Type", file.type || "application/octet-stream");
+      // Bun doesn't know the .webmanifest type; browsers require this exact one.
+      const contentType = req.path.endsWith(".webmanifest")
+        ? "application/manifest+json"
+        : file.type || "application/octet-stream";
+      res.setHeader("Content-Type", contentType);
       if (req.path.startsWith("/assets/")) {
+        // Hashed, content-addressed bundles — safe to cache forever.
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        // Everything else at the root (sw.js, manifest, icons) must revalidate
+        // so PWA updates propagate immediately.
+        res.setHeader("Cache-Control", "no-cache");
       }
       res.send(Buffer.from(await file.arrayBuffer()));
       return;
@@ -167,6 +184,7 @@ if (isProduction) {
     if (indexPath) {
       const file = Bun.file(indexPath);
       res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
       res.send(Buffer.from(await file.arrayBuffer()));
       return;
     }

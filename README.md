@@ -126,3 +126,41 @@ Touch devices (iPad/phone) keep 1× sizing and rely on pinch-zoom instead, same 
 ## Browser requirements
 
 Requires the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) (`crypto.subtle`) and a secure context (HTTPS or localhost) — noVNC also requires a secure context. The app will refuse to load on unsupported browsers.
+
+## Install as an app (PWA)
+
+The app ships a web manifest and a network-only service worker, so Chrome/Edge
+(desktop and Android) and iOS Safari can install it as a standalone app with its
+own window and launcher icon — no tabs or toolbar. In the browser, use the
+**Install** button in the address bar (desktop) or **Add to Home Screen**
+(mobile).
+
+The service worker **caches nothing** — it exists only to satisfy the
+installability requirement. Combined with `Cache-Control: no-cache` on
+`index.html`, the service worker, the manifest, and the icons, the installed app
+always loads fresh content and never serves stale assets. Only the content-hashed
+`/assets/*` bundles are cached (`immutable`), which is always safe.
+
+## Standalone window (Chrome app mode)
+
+Alternatively, without installing, run the viewer in its own window with no tabs
+or toolbar by launching Chrome with `--app=<url>`. Add a dedicated
+`--user-data-dir` so it always opens a separate instance (and keeps its session
+isolated from your normal browsing):
+
+```bash
+# macOS — invoke the binary directly; `open -a ... --args` is ignored when
+# Chrome is already running and just opens a tab in the existing window.
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --app=https://your-host/ \
+  --user-data-dir="$HOME/.mywebdesk-chrome"
+
+# Linux
+google-chrome --app=https://your-host/ --user-data-dir="$HOME/.mywebdesk-chrome"
+
+# Windows
+chrome.exe --app=https://your-host/ --user-data-dir="%USERPROFILE%\.mywebdesk-chrome"
+```
+
+Optional: `--window-size=1280,800`, `--start-fullscreen`, or `--kiosk` (fullscreen,
+locked; exit with Alt+F4 / Cmd+Q).

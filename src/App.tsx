@@ -174,6 +174,7 @@ export default function App() {
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const clipboardInputRef = useRef<HTMLTextAreaElement>(null);
   const lastSyncedRemoteClipboardRef = useRef("");
+  const lastSentLocalClipboardRef = useRef("");
   const hasProcessedRemoteClipboardRef = useRef(false);
   const clipboardCryptoKeyRef = useRef<CryptoKey | null>(null);
   const clipboardSendNoticeTimerRef = useRef<ReturnType<
@@ -453,6 +454,7 @@ export default function App() {
       setRemoteClipboardPayload(null);
       setClipboardSecurityError(null);
       hasProcessedRemoteClipboardRef.current = false;
+      lastSentLocalClipboardRef.current = "";
       clipboardCryptoKeyRef.current = null;
     }
   }, [state]);
@@ -467,6 +469,34 @@ export default function App() {
       return null;
     }
   }, []);
+
+  // Push the local clipboard to the remote whenever the tab becomes active,
+  // so pastes inside the remote desktop (context menu, middle click) see the
+  // latest local copy without requiring Ctrl+V in the browser.
+  useEffect(() => {
+    if (state !== "connected") return;
+    const syncLocalClipboardToRemote = () => {
+      if (document.hidden || !document.hasFocus()) return;
+      void (async () => {
+        const text = await readLocalClipboardText();
+        if (text === null || text.length === 0) return;
+        if (text === lastSyncedRemoteClipboardRef.current) return;
+        if (text === lastSentLocalClipboardRef.current) return;
+        lastSentLocalClipboardRef.current = text;
+        sendClipboard(text);
+      })();
+    };
+    window.addEventListener("focus", syncLocalClipboardToRemote);
+    document.addEventListener("visibilitychange", syncLocalClipboardToRemote);
+    syncLocalClipboardToRemote();
+    return () => {
+      window.removeEventListener("focus", syncLocalClipboardToRemote);
+      document.removeEventListener(
+        "visibilitychange",
+        syncLocalClipboardToRemote,
+      );
+    };
+  }, [state, readLocalClipboardText, sendClipboard]);
 
   const toggleToolbar = useCallback(() => {
     setToolbarOpen((prev) => !prev);
@@ -712,6 +742,7 @@ export default function App() {
         if (text !== null) {
           setClipboardInput(text);
           setIsManualClipboardInputActive(true);
+          lastSentLocalClipboardRef.current = text;
           sendClipboard(text);
         }
         sendKey(CTRL_KEYSYM, true);

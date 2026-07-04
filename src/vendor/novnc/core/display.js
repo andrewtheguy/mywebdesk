@@ -8,7 +8,6 @@
 
 import * as Log from './util/logging.js';
 import Base64 from "./base64.js";
-import { toSigned32bit } from './util/int.js';
 
 export default class Display {
     constructor(target) {
@@ -67,20 +66,6 @@ export default class Display {
     }
 
     // ===== PUBLIC METHODS =====
-
-    absX(x) {
-        if (this._scale === 0) {
-            return 0;
-        }
-        return toSigned32bit(x / this._scale);
-    }
-
-    absY(y) {
-        if (this._scale === 0) {
-            return 0;
-        }
-        return toSigned32bit(y / this._scale);
-    }
 
     resize(width, height) {
         this._prevDrawStyle = "";

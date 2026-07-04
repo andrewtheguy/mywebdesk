@@ -19,7 +19,8 @@ real VNC auth and offers the browser only security type None; the app has its
 own input overlay and keeps the cursor rendered server-side):
 
 - Deleted files: `core/ra2.js`, the entire `core/crypto/` directory,
-  `core/input/gesturehandler.js`, `core/util/cursor.js`.
+  `core/input/gesturehandler.js`, `core/util/cursor.js`,
+  `core/util/element.js`.
   (`server/vncAuth.test.ts` gets its DES reference implementation from the
   upstream `@novnc/novnc` devDependency instead.)
 - `core/rfb.js`:
@@ -58,6 +59,28 @@ Further dead-for-this-app API removed from `core/rfb.js`:
   `core/decoders/{h264,hextile,rre,zlib,tightpng,zrle,jpeg}.js` and their
   advertisements). A server may only send encodings the client advertises
   (plus Raw, which is always allowed); TigerVNC picks Tight.
+
+RFB's built-in input layer removed. The app's overlay sits above the canvas
+and synthesizes all input through the public `sendKey()`/`sendPointer()`/
+`clipboardPasteFrom()` methods, and the app creates its own
+`core/input/keyboard.js` `Keyboard` on its container, so none of RFB's own
+canvas-attached handlers could ever fire:
+
+- `core/rfb.js`: removed the canvas mouse/wheel/focus listeners and their
+  handlers (`_handleMouse`, `_handleMouseButton/Move`, `_sendMouse`,
+  `_handleWheel`, `_convertButtonMask`, `_focusCanvas`, the move-throttle
+  timer and wheel-accumulation state), the internal `Keyboard` instance with
+  its `_handleKeyEvent` caps/num-lock resync (the app's key path already
+  bypassed it), the `viewOnly`/`focusOnClick` properties and `focus()`/
+  `blur()` (the canvas is never focused), the ExtendedMouseButtons and
+  QEMU LED pseudo-encoding advertisements + handling (`_handleLedEvent`,
+  `_extendedPointerEventSupported`) and the `extendedPointerEvent` message —
+  the app never sends button bits above 0x7f.
+- `core/display.js`: removed `absX`/`absY` (only the deleted mouse path
+  translated coordinates).
+- `core/util/events.js` reduced to `stopEvent` (the `setCapture`/
+  `releaseCapture` emulation served only the deleted mouse path);
+  `core/util/element.js` (`clientToElement`) deleted.
 
 Dead-code sweep across the supporting modules (nothing here was referenced
 by any remaining fork or app code):

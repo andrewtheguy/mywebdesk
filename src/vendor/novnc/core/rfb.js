@@ -10,15 +10,11 @@
 import { toUnsigned32bit, toSigned32bit } from './util/int.js';
 import * as Log from './util/logging.js';
 import { encodeUTF8, decodeUTF8 } from './util/strings.js';
-import { clientToElement } from './util/element.js';
-import { setCapture } from './util/events.js';
 import EventTargetMixin from './util/eventtarget.js';
 import Display from "./display.js";
 import Inflator from "./inflator.js";
 import Deflator from "./deflator.js";
-import Keyboard from "./input/keyboard.js";
 import Websock from "./websock.js";
-import KeyTable from "./input/keysym.js";
 import XtScancode from "./input/xtscancodes.js";
 import { encodings } from "./encodings.js";
 
@@ -34,13 +30,6 @@ const DEFAULT_BACKGROUND = 'rgb(40, 40, 40)';
 // requested. Matches useVnc's own viewport-resize debounce so both request
 // paths settle together after the window stops changing size.
 const RESIZE_REQUEST_DEBOUNCE_MS = 250;
-
-// Minimum wait (ms) between two mouse moves
-const MOUSE_MOVE_DELAY = 17;
-
-// Wheel thresholds
-const WHEEL_STEP = 50; // Pixels needed for one step
-const WHEEL_LINE_HEIGHT = 19; // Assumed pixels for one line step
 
 // Tight encoding quality/compression advertised to the server
 const QUALITY_LEVEL = 6;
@@ -114,8 +103,6 @@ export default class RFB extends EventTargetMixin {
 
         this._qemuExtKeyEventSupported = false;
 
-        this._extendedPointerEventSupported = false;
-
         this._clipboardText = null;
         this._clipboardServerCapabilitiesActions = {};
         this._clipboardServerCapabilitiesFormats = {};
@@ -124,14 +111,12 @@ export default class RFB extends EventTargetMixin {
         this._sock = null;              // Websock object
         this._display = null;           // Display object
         this._flushing = false;         // Display flushing state
-        this._keyboard = null;          // Keyboard input handler object
         this._resizeObserver = null;    // Resize observer object
 
         // Timers
         this._disconnTimer = null;      // disconnection timer
         this._resizeTimeout = null;     // resize rate limiting
         this._resizeRequestDebounce = null; // remote-resize debounce
-        this._mouseMoveTimer = null;
 
         // Display scale controlled by the app via setBaseScale() (stock
         // noVNC forced 1.0 unless scaleViewport autoscaled to the container)
@@ -149,21 +134,6 @@ export default class RFB extends EventTargetMixin {
             encoding: null,
         };
 
-        // Mouse state
-        this._mousePos = {};
-        this._mouseButtonMask = 0;
-        this._mouseLastMoveTime = 0;
-        this._accumulatedWheelDeltaX = 0;
-        this._accumulatedWheelDeltaY = 0;
-
-        // Bound event handlers
-        this._eventHandlers = {
-            focusCanvas: this._focusCanvas.bind(this),
-            handleResize: this._handleResize.bind(this),
-            handleMouse: this._handleMouse.bind(this),
-            handleWheel: this._handleWheel.bind(this),
-        };
-
         // main setup
         Log.Debug(">> RFB.constructor");
 
@@ -176,11 +146,8 @@ export default class RFB extends EventTargetMixin {
         this._screen.style.background = DEFAULT_BACKGROUND;
         this._canvas = document.createElement('canvas');
         this._canvas.style.margin = 'auto';
-        // Some browsers add an outline on focus
-        this._canvas.style.outline = 'none';
         this._canvas.width = 0;
         this._canvas.height = 0;
-        this._canvas.tabIndex = -1;
         this._screen.appendChild(this._canvas);
 
         // populate decoder array with objects. Only the encodings this
@@ -199,11 +166,6 @@ export default class RFB extends EventTargetMixin {
             throw exc;
         }
 
-        this._keyboard = new Keyboard(this._canvas);
-        this._keyboard.onkeyevent = this._handleKeyEvent.bind(this);
-        this._remoteCapsLock = null; // Null indicates unknown or irrelevant
-        this._remoteNumLock = null;
-
         this._sock = new Websock();
         this._sock.on('open', this._socketOpen.bind(this));
         this._sock.on('close', this._socketClose.bind(this));
@@ -212,7 +174,7 @@ export default class RFB extends EventTargetMixin {
 
         this._expectedClientWidth = null;
         this._expectedClientHeight = null;
-        this._resizeObserver = new ResizeObserver(this._eventHandlers.handleResize);
+        this._resizeObserver = new ResizeObserver(this._handleResize.bind(this));
 
         // All prepared, kick off the connection
         this._updateConnectionState('connecting');
@@ -221,32 +183,15 @@ export default class RFB extends EventTargetMixin {
 
         // ===== PROPERTIES =====
 
-        this.focusOnClick = true;
-
         // When set, returns the desired framebuffer size in device pixels;
         // it replaces the container CSS size as the setDesktopSize target,
         // making exact HiDPI framebuffer sizing possible.
         this.computeTargetSize = null;
 
-        this._viewOnly = false;
         this._resizeSession = false;
     }
 
     // ===== PROPERTIES =====
-
-    get viewOnly() { return this._viewOnly; }
-    set viewOnly(viewOnly) {
-        this._viewOnly = viewOnly;
-
-        if (this._rfbConnectionState === "connecting" ||
-            this._rfbConnectionState === "connected") {
-            if (viewOnly) {
-                this._keyboard.ungrab();
-            } else {
-                this._keyboard.grab();
-            }
-        }
-    }
 
     get resizeSession() { return this._resizeSession; }
     set resizeSession(resize) {
@@ -268,7 +213,7 @@ export default class RFB extends EventTargetMixin {
     // Send a key press. If 'down' is not specified then send a down key
     // followed by an up key.
     sendKey(keysym, code, down) {
-        if (this._rfbConnectionState !== 'connected' || this._viewOnly) { return; }
+        if (this._rfbConnectionState !== 'connected') { return; }
 
         if (down === undefined) {
             this.sendKey(keysym, code, true);
@@ -294,16 +239,8 @@ export default class RFB extends EventTargetMixin {
         }
     }
 
-    focus(options) {
-        this._canvas.focus(options);
-    }
-
-    blur() {
-        this._canvas.blur();
-    }
-
     clipboardPasteFrom(text) {
-        if (this._rfbConnectionState !== 'connected' || this._viewOnly) { return; }
+        if (this._rfbConnectionState !== 'connected') { return; }
 
         if (this._clipboardServerCapabilitiesFormats[extendedClipboardFormatText] &&
             this._clipboardServerCapabilitiesActions[extendedClipboardActionNotify]) {
@@ -396,38 +333,15 @@ export default class RFB extends EventTargetMixin {
         // Monitor size changes of the screen element
         this._resizeObserver.observe(this._screen);
 
-        // Always grab focus on some kind of click event
-        this._canvas.addEventListener("mousedown", this._eventHandlers.focusCanvas);
-        this._canvas.addEventListener("touchstart", this._eventHandlers.focusCanvas);
-
-        // Mouse events
-        this._canvas.addEventListener('mousedown', this._eventHandlers.handleMouse);
-        this._canvas.addEventListener('mouseup', this._eventHandlers.handleMouse);
-        this._canvas.addEventListener('mousemove', this._eventHandlers.handleMouse);
-        // Prevent middle-click pasting (see handler for why we bind to document)
-        this._canvas.addEventListener('click', this._eventHandlers.handleMouse);
-        // preventDefault() on mousedown doesn't stop this event for some
-        // reason so we have to explicitly block it
-        this._canvas.addEventListener('contextmenu', this._eventHandlers.handleMouse);
-
-        // Wheel events
-        this._canvas.addEventListener("wheel", this._eventHandlers.handleWheel);
+        // No input listeners: the app's own overlay drives all input via
+        // sendKey()/sendPointer()/clipboardPasteFrom().
 
         Log.Debug("<< RFB.connect");
     }
 
     _disconnect() {
         Log.Debug(">> RFB.disconnect");
-        this._canvas.removeEventListener("wheel", this._eventHandlers.handleWheel);
-        this._canvas.removeEventListener('mousedown', this._eventHandlers.handleMouse);
-        this._canvas.removeEventListener('mouseup', this._eventHandlers.handleMouse);
-        this._canvas.removeEventListener('mousemove', this._eventHandlers.handleMouse);
-        this._canvas.removeEventListener('click', this._eventHandlers.handleMouse);
-        this._canvas.removeEventListener('contextmenu', this._eventHandlers.handleMouse);
-        this._canvas.removeEventListener("mousedown", this._eventHandlers.focusCanvas);
-        this._canvas.removeEventListener("touchstart", this._eventHandlers.focusCanvas);
         this._resizeObserver.disconnect();
-        this._keyboard.ungrab();
         this._sock.close();
         try {
             this._target.removeChild(this._screen);
@@ -441,7 +355,6 @@ export default class RFB extends EventTargetMixin {
         }
         clearTimeout(this._resizeTimeout);
         clearTimeout(this._resizeRequestDebounce);
-        clearTimeout(this._mouseMoveTimer);
         Log.Debug("<< RFB.disconnect");
     }
 
@@ -495,14 +408,6 @@ export default class RFB extends EventTargetMixin {
 
     _socketError(e) {
         Log.Warn("WebSocket on-error event");
-    }
-
-    _focusCanvas(event) {
-        if (!this.focusOnClick) {
-            return;
-        }
-
-        this.focus({ preventScroll: true });
     }
 
     _setDesktopName(name) {
@@ -564,9 +469,6 @@ export default class RFB extends EventTargetMixin {
     // and may only be sent if we have received an ExtendedDesktopSize message
     _requestRemoteResize() {
         if (!this._resizeSession) {
-            return;
-        }
-        if (this._viewOnly) {
             return;
         }
         if (!this._supportsSetDesktopSize) {
@@ -779,233 +681,6 @@ export default class RFB extends EventTargetMixin {
             default:
                 Log.Error("Got data while in an invalid state");
                 break;
-        }
-    }
-
-    _handleKeyEvent(keysym, code, down, numlock, capslock) {
-        // If remote state of capslock is known, and it doesn't match the local led state of
-        // the keyboard, we send a capslock keypress first to bring it into sync.
-        // If we just pressed CapsLock, or we toggled it remotely due to it being out of sync
-        // we clear the remote state so that we don't send duplicate or spurious fixes,
-        // since it may take some time to receive the new remote CapsLock state.
-        if (code == 'CapsLock' && down) {
-            this._remoteCapsLock = null;
-        }
-        if (this._remoteCapsLock !== null && capslock !== null && this._remoteCapsLock !== capslock && down) {
-            Log.Debug("Fixing remote caps lock");
-
-            this.sendKey(KeyTable.XK_Caps_Lock, 'CapsLock', true);
-            this.sendKey(KeyTable.XK_Caps_Lock, 'CapsLock', false);
-            // We clear the remote capsLock state when we do this to prevent issues with doing this twice
-            // before we receive an update of the the remote state.
-            this._remoteCapsLock = null;
-        }
-
-        // Logic for numlock is exactly the same.
-        if (code == 'NumLock' && down) {
-            this._remoteNumLock = null;
-        }
-        if (this._remoteNumLock !== null && numlock !== null && this._remoteNumLock !== numlock && down) {
-            Log.Debug("Fixing remote num lock");
-            this.sendKey(KeyTable.XK_Num_Lock, 'NumLock', true);
-            this.sendKey(KeyTable.XK_Num_Lock, 'NumLock', false);
-            this._remoteNumLock = null;
-        }
-        this.sendKey(keysym, code, down);
-    }
-
-    static _convertButtonMask(buttons) {
-        /* The bits in MouseEvent.buttons property correspond
-         * to the following mouse buttons:
-         *     0: Left
-         *     1: Right
-         *     2: Middle
-         *     3: Back
-         *     4: Forward
-         *
-         * These bits needs to be converted to what they are defined as
-         * in the RFB protocol.
-         */
-
-        const buttonMaskMap = {
-            0: 1 << 0, // Left
-            1: 1 << 2, // Right
-            2: 1 << 1, // Middle
-            3: 1 << 7, // Back
-            4: 1 << 8, // Forward
-        };
-
-        let bmask = 0;
-        for (let i = 0; i < 5; i++) {
-            if (buttons & (1 << i)) {
-                bmask |= buttonMaskMap[i];
-            }
-        }
-        return bmask;
-    }
-
-    _handleMouse(ev) {
-        /*
-         * We don't check connection status or viewOnly here as the
-         * mouse events might be used to control the viewport
-         */
-
-        if (ev.type === 'click') {
-            /*
-             * Note: This is only needed for the 'click' event as it fails
-             *       to fire properly for the target element so we have
-             *       to listen on the document element instead.
-             */
-            if (ev.target !== this._canvas) {
-                return;
-            }
-        }
-
-        // FIXME: if we're in view-only and not dragging,
-        //        should we stop events?
-        ev.stopPropagation();
-        ev.preventDefault();
-
-        if ((ev.type === 'click') || (ev.type === 'contextmenu')) {
-            return;
-        }
-
-        let pos = clientToElement(ev.clientX, ev.clientY,
-                                  this._canvas);
-
-        let bmask = RFB._convertButtonMask(ev.buttons);
-
-        let down = ev.type == 'mousedown';
-        switch (ev.type) {
-            case 'mousedown':
-            case 'mouseup':
-                if (down) {
-                    setCapture(this._canvas);
-                }
-                this._handleMouseButton(pos.x, pos.y, bmask);
-                break;
-            case 'mousemove':
-                this._handleMouseMove(pos.x, pos.y);
-                break;
-        }
-    }
-
-    _handleMouseButton(x, y, bmask) {
-        // Flush waiting move event first
-        this._flushMouseMoveTimer(x, y);
-
-        this._mouseButtonMask = bmask;
-        this._sendMouse(x, y, this._mouseButtonMask);
-    }
-
-    _handleMouseMove(x, y) {
-        this._mousePos = { 'x': x, 'y': y };
-
-        // Limit many mouse move events to one every MOUSE_MOVE_DELAY ms
-        if (this._mouseMoveTimer == null) {
-
-            const timeSinceLastMove = Date.now() - this._mouseLastMoveTime;
-            if (timeSinceLastMove > MOUSE_MOVE_DELAY) {
-                this._sendMouse(x, y, this._mouseButtonMask);
-                this._mouseLastMoveTime = Date.now();
-            } else {
-                // Too soon since the latest move, wait the remaining time
-                this._mouseMoveTimer = setTimeout(() => {
-                    this._handleDelayedMouseMove();
-                }, MOUSE_MOVE_DELAY - timeSinceLastMove);
-            }
-        }
-    }
-
-    _handleDelayedMouseMove() {
-        this._mouseMoveTimer = null;
-        this._sendMouse(this._mousePos.x, this._mousePos.y,
-                        this._mouseButtonMask);
-        this._mouseLastMoveTime = Date.now();
-    }
-
-    _sendMouse(x, y, mask) {
-        if (this._rfbConnectionState !== 'connected') { return; }
-        if (this._viewOnly) { return; } // View only, skip mouse events
-
-        // Highest bit in mask is never sent to the server
-        if (mask & 0x8000) {
-            throw new Error("Illegal mouse button mask (mask: " + mask + ")");
-        }
-
-        let extendedMouseButtons = mask & 0x7f80;
-
-        if (this._extendedPointerEventSupported && extendedMouseButtons) {
-            RFB.messages.extendedPointerEvent(this._sock, this._display.absX(x),
-                                              this._display.absY(y), mask);
-        } else {
-            RFB.messages.pointerEvent(this._sock, this._display.absX(x),
-                                      this._display.absY(y), mask);
-        }
-    }
-
-    _handleWheel(ev) {
-        if (this._rfbConnectionState !== 'connected') { return; }
-        if (this._viewOnly) { return; } // View only, skip mouse events
-
-        ev.stopPropagation();
-        ev.preventDefault();
-
-        let pos = clientToElement(ev.clientX, ev.clientY,
-                                  this._canvas);
-
-        let bmask = RFB._convertButtonMask(ev.buttons);
-        let dX = ev.deltaX;
-        let dY = ev.deltaY;
-
-        // Pixel units unless it's non-zero.
-        // Note that if deltamode is line or page won't matter since we aren't
-        // sending the mouse wheel delta to the server anyway.
-        // The difference between pixel and line can be important however since
-        // we have a threshold that can be smaller than the line height.
-        if (ev.deltaMode !== 0) {
-            dX *= WHEEL_LINE_HEIGHT;
-            dY *= WHEEL_LINE_HEIGHT;
-        }
-
-        // Mouse wheel events are sent in steps over VNC. This means that the VNC
-        // protocol can't handle a wheel event with specific distance or speed.
-        // Therefor, if we get a lot of small mouse wheel events we combine them.
-        this._accumulatedWheelDeltaX += dX;
-        this._accumulatedWheelDeltaY += dY;
-
-
-        // Generate a mouse wheel step event when the accumulated delta
-        // for one of the axes is large enough.
-        if (Math.abs(this._accumulatedWheelDeltaX) >= WHEEL_STEP) {
-            if (this._accumulatedWheelDeltaX < 0) {
-                this._handleMouseButton(pos.x, pos.y, bmask | 1 << 5);
-                this._handleMouseButton(pos.x, pos.y, bmask);
-            } else if (this._accumulatedWheelDeltaX > 0) {
-                this._handleMouseButton(pos.x, pos.y, bmask | 1 << 6);
-                this._handleMouseButton(pos.x, pos.y, bmask);
-            }
-
-            this._accumulatedWheelDeltaX = 0;
-        }
-        if (Math.abs(this._accumulatedWheelDeltaY) >= WHEEL_STEP) {
-            if (this._accumulatedWheelDeltaY < 0) {
-                this._handleMouseButton(pos.x, pos.y, bmask | 1 << 3);
-                this._handleMouseButton(pos.x, pos.y, bmask);
-            } else if (this._accumulatedWheelDeltaY > 0) {
-                this._handleMouseButton(pos.x, pos.y, bmask | 1 << 4);
-                this._handleMouseButton(pos.x, pos.y, bmask);
-            }
-
-            this._accumulatedWheelDeltaY = 0;
-        }
-    }
-
-    _flushMouseMoveTimer(x, y) {
-        if (this._mouseMoveTimer !== null) {
-            clearTimeout(this._mouseMoveTimer);
-            this._mouseMoveTimer = null;
-            this._sendMouse(x, y, this._mouseButtonMask);
         }
     }
 
@@ -1224,8 +899,6 @@ export default class RFB extends EventTargetMixin {
         this._setDesktopName(name);
         this._resize(width, height);
 
-        if (!this._viewOnly) { this._keyboard.grab(); }
-
         this._fbDepth = 24;
 
         if (this._fbName === "Intel(r) AMT KVM") {
@@ -1260,13 +933,11 @@ export default class RFB extends EventTargetMixin {
         encs.push(encodings.pseudoEncodingDesktopSize);
         encs.push(encodings.pseudoEncodingLastRect);
         encs.push(encodings.pseudoEncodingQEMUExtendedKeyEvent);
-        encs.push(encodings.pseudoEncodingQEMULedEvent);
         encs.push(encodings.pseudoEncodingExtendedDesktopSize);
         encs.push(encodings.pseudoEncodingFence);
         encs.push(encodings.pseudoEncodingContinuousUpdates);
         encs.push(encodings.pseudoEncodingDesktopName);
         encs.push(encodings.pseudoEncodingExtendedClipboard);
-        encs.push(encodings.pseudoEncodingExtendedMouseButtons);
 
         // The cursor pseudo-encodings are deliberately never advertised:
         // they would make the server stop drawing the cursor into the
@@ -1337,9 +1008,6 @@ export default class RFB extends EventTargetMixin {
         if (length >= 0) {
             //Standard msg
             const text = this._sock.rQshiftStr(length);
-            if (this._viewOnly) {
-                return true;
-            }
 
             this.dispatchEvent(new CustomEvent(
                 "clipboard",
@@ -1388,10 +1056,6 @@ export default class RFB extends EventTargetMixin {
                 RFB.messages.extendedClipboardCaps(this._sock, clientActions, {extendedClipboardFormatText: 0});
 
             } else if (actions === extendedClipboardActionRequest) {
-                if (this._viewOnly) {
-                    return true;
-                }
-
                 // Check if server has told us it can handle Provide and there is clipboard data to send.
                 if (this._clipboardText != null &&
                     this._clipboardServerCapabilitiesActions[extendedClipboardActionProvide]) {
@@ -1402,10 +1066,6 @@ export default class RFB extends EventTargetMixin {
                 }
 
             } else if (actions === extendedClipboardActionPeek) {
-                if (this._viewOnly) {
-                    return true;
-                }
-
                 if (this._clipboardServerCapabilitiesActions[extendedClipboardActionNotify]) {
 
                     if (this._clipboardText != null) {
@@ -1416,10 +1076,6 @@ export default class RFB extends EventTargetMixin {
                 }
 
             } else if (actions === extendedClipboardActionNotify) {
-                if (this._viewOnly) {
-                    return true;
-                }
-
                 if (this._clipboardServerCapabilitiesActions[extendedClipboardActionRequest]) {
 
                     if (formats & extendedClipboardFormatText) {
@@ -1428,10 +1084,6 @@ export default class RFB extends EventTargetMixin {
                 }
 
             } else if (actions === extendedClipboardActionProvide) {
-                if (this._viewOnly) {
-                    return true;
-                }
-
                 if (!(formats & extendedClipboardFormatText)) {
                     return true;
                 }
@@ -1656,13 +1308,6 @@ export default class RFB extends EventTargetMixin {
             case encodings.pseudoEncodingExtendedDesktopSize:
                 return this._handleExtendedDesktopSize();
 
-            case encodings.pseudoEncodingExtendedMouseButtons:
-                this._extendedPointerEventSupported = true;
-                return true;
-
-            case encodings.pseudoEncodingQEMULedEvent:
-                return this._handleLedEvent();
-
             default:
                 return this._handleDataRect();
         }
@@ -1683,21 +1328,6 @@ export default class RFB extends EventTargetMixin {
         name = decodeUTF8(name, true);
 
         this._setDesktopName(name);
-
-        return true;
-    }
-
-    _handleLedEvent() {
-        if (this._sock.rQwait("LED status", 1)) {
-            return false;
-        }
-
-        let data = this._sock.rQshift8();
-        // ScrollLock state can be retrieved with data & 1. This is currently not needed.
-        let numLock = data & 2 ? true : false;
-        let capsLock = data & 4 ? true : false;
-        this._remoteCapsLock = capsLock;
-        this._remoteNumLock = numLock;
 
         return true;
     }
@@ -1882,27 +1512,6 @@ RFB.messages = {
 
         sock.sQpush16(x);
         sock.sQpush16(y);
-
-        sock.flush();
-    },
-
-    extendedPointerEvent(sock, x, y, mask) {
-        sock.sQpush8(5); // msg-type
-
-        let higherBits = (mask >> 7) & 0xff;
-
-        // Bits 2-7 are reserved
-        if (higherBits & 0xfc) {
-            throw new Error("Invalid mouse button mask: " + mask);
-        }
-
-        let lowerBits = mask & 0x7f;
-        lowerBits |= 0x80; // Set marker bit to 1
-
-        sock.sQpush8(lowerBits);
-        sock.sQpush16(x);
-        sock.sQpush16(y);
-        sock.sQpush8(higherBits);
 
         sock.flush();
     },

@@ -15,12 +15,10 @@ export const encodings = {
     pseudoEncodingDesktopSize: -223,
     pseudoEncodingLastRect: -224,
     pseudoEncodingQEMUExtendedKeyEvent: -258,
-    pseudoEncodingQEMULedEvent: -261,
     pseudoEncodingDesktopName: -307,
     pseudoEncodingExtendedDesktopSize: -308,
     pseudoEncodingFence: -312,
     pseudoEncodingContinuousUpdates: -313,
-    pseudoEncodingExtendedMouseButtons: -316,
     pseudoEncodingCompressLevel0: -256,
     pseudoEncodingExtendedClipboard: 0xc0a1e5ce
 };

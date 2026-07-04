@@ -20,8 +20,6 @@ declare module "@novnc-core/rfb.js" {
   export default class RFB {
     constructor(target: HTMLElement, channel: WebSocket);
 
-    viewOnly: boolean;
-    focusOnClick: boolean;
     resizeSession: boolean;
 
     // When set, returns the desired framebuffer size in device pixels and
@@ -35,8 +33,6 @@ declare module "@novnc-core/rfb.js" {
 
     disconnect(): void;
     sendKey(keysym: number, code: string | null, down?: boolean): void;
-    focus(options?: FocusOptions): void;
-    blur(): void;
     clipboardPasteFrom(text: string): void;
     setBaseScale(scale: number): void;
     requestResize(): void;

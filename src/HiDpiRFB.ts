@@ -5,6 +5,10 @@ import RFB from "@novnc/novnc";
 const PSEUDO_ENCODING_CURSOR = -239;
 const PSEUDO_ENCODING_VMWARE_CURSOR = 0x574d5664;
 
+// Matches useVnc's own viewport-resize debounce so both request paths settle
+// together after the window stops changing size.
+const RESIZE_REQUEST_DEBOUNCE_MS = 250;
+
 export interface FbSize {
   width: number;
   height: number;
@@ -27,6 +31,8 @@ export class HiDpiRFB extends RFB {
 
   private _baseScale: number | undefined;
 
+  private _resizeRequestDebounce: ReturnType<typeof setTimeout> | undefined;
+
   // Sole source for setDesktopSize requests (_requestRemoteResize).
   protected override _screenSize(): { w: number; h: number } {
     if (!this.computeTargetSize) return super._screenSize();
@@ -44,6 +50,25 @@ export class HiDpiRFB extends RFB {
   setBaseScale(scale: number): void {
     this._baseScale = scale;
     this._display.scale = scale;
+  }
+
+  // Stock impl fires a setDesktopSize request from its ResizeObserver on
+  // every container size change, so a continuous window drag resizes the
+  // remote desktop ~10×/s and the session visibly flickers. Keep the local
+  // display updates immediate but debounce the remote resize request until
+  // the size has been stable for a moment.
+  protected override _handleResize(): void {
+    if (this._clientHasExpectedSize()) return;
+    window.requestAnimationFrame(() => {
+      this._updateClip();
+      this._updateScale();
+      this._saveExpectedClientSize();
+    });
+    clearTimeout(this._resizeRequestDebounce);
+    this._resizeRequestDebounce = setTimeout(() => {
+      if (this._rfbConnectionState !== "connected") return;
+      this._requestRemoteResize();
+    }, RESIZE_REQUEST_DEBOUNCE_MS);
   }
 
   protected override _resize(width: number, height: number): void {

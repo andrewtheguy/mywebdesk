@@ -81,6 +81,10 @@ declare module "@novnc/novnc" {
       | "disconnected";
     protected _screenSize(): { w: number; h: number };
     protected _updateScale(): void;
+    protected _updateClip(): void;
+    protected _handleResize(): void;
+    protected _clientHasExpectedSize(): boolean;
+    protected _saveExpectedClientSize(): void;
     protected _requestRemoteResize(): void;
     protected _resize(width: number, height: number): void;
     protected _sendEncodings(): void;

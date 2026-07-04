@@ -8,12 +8,6 @@ declare module "@novnc-core/rfb.js" {
     height: number;
   }
 
-  export interface RFBOptions {
-    shared?: boolean;
-    repeaterID?: string;
-    wsProtocols?: string[];
-  }
-
   export interface RFBEventMap {
     connect: CustomEvent<Record<string, never>>;
     disconnect: CustomEvent<{ clean: boolean }>;
@@ -24,16 +18,11 @@ declare module "@novnc-core/rfb.js" {
   }
 
   export default class RFB {
-    constructor(
-      target: HTMLElement,
-      urlOrChannel: string | WebSocket,
-      options?: RFBOptions,
-    );
+    constructor(target: HTMLElement, channel: WebSocket);
 
     viewOnly: boolean;
     focusOnClick: boolean;
     resizeSession: boolean;
-    background: string;
 
     // When set, returns the desired framebuffer size in device pixels and
     // becomes the sole source for setDesktopSize requests.

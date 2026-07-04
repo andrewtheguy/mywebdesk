@@ -39,6 +39,22 @@ own input overlay and keeps the cursor rendered server-side):
     `_sendEncodings` no longer advertises the cursor pseudo-encodings (the
     server keeps compositing the cursor into the framebuffer).
 
+Further dead-for-this-app API removed from `core/rfb.js`:
+
+- XVP power extension: `machineShutdown/Reboot/Reset`, `_xvpOp`,
+  `_handleXvpMsg`, the Xvp pseudo-encoding advertisement, `capabilities` /
+  `_setCapability` and the `capabilities` event.
+- Viewport clipping/dragging (the app resizes the remote instead):
+  `clipViewport`, `dragViewport`, `clippingViewport` + its event,
+  `_updateClip`, `_fixScrollbars`, the mouse drag-to-pan branches, and the
+  legacy `touchButton` accessor.
+- Unused public helpers: `sendCtrlAltDel`, `getImageData`, `toDataURL`,
+  `toBlob`, the `background` accessor.
+- Connection plumbing the app never uses: the constructor now takes only a
+  WebSocket channel (URL/`sock.open` path removed) and no options object
+  (`shared` always 1, `repeaterID`/UltraVNC-repeater handshake and
+  `wsProtocols` removed).
+
 App-specific behavior folded into `core/rfb.js` (formerly the `HiDpiRFB`
 subclass in the app):
 

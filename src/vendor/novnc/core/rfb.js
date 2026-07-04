@@ -10,7 +10,7 @@
 import { toUnsigned32bit, toSigned32bit } from './util/int.js';
 import * as Log from './util/logging.js';
 import { encodeUTF8, decodeUTF8 } from './util/strings.js';
-import { dragThreshold, supportsWebCodecsH264Decode } from './util/browser.js';
+import { supportsWebCodecsH264Decode } from './util/browser.js';
 import { clientToElement } from './util/element.js';
 import { setCapture } from './util/events.js';
 import EventTargetMixin from './util/eventtarget.js';
@@ -71,12 +71,12 @@ const extendedClipboardActionNotify  = 1 << 27;
 const extendedClipboardActionProvide = 1 << 28;
 
 export default class RFB extends EventTargetMixin {
-    constructor(target, urlOrChannel, options) {
+    constructor(target, channel) {
         if (!target) {
             throw new Error("Must specify target");
         }
-        if (!urlOrChannel) {
-            throw new Error("Must specify URL, WebSocket or RTCDataChannel");
+        if (!channel) {
+            throw new Error("Must specify WebSocket channel");
         }
 
         // We rely on modern APIs which might not be available in an
@@ -88,19 +88,7 @@ export default class RFB extends EventTargetMixin {
         super();
 
         this._target = target;
-
-        if (typeof urlOrChannel === "string") {
-            this._url = urlOrChannel;
-        } else {
-            this._url = null;
-            this._rawChannel = urlOrChannel;
-        }
-
-        // Connection details
-        options = options || {};
-        this._shared = 'shared' in options ? !!options.shared : true;
-        this._repeaterID = options.repeaterID || '';
-        this._wsProtocols = options.wsProtocols || [];
+        this._rawChannel = channel;
 
         // Internal state
         this._rfbConnectionState = '';
@@ -111,14 +99,11 @@ export default class RFB extends EventTargetMixin {
         // Server capabilities
         this._rfbVersion = 0;
         this._rfbMaxVersion = 3.8;
-        this._rfbXvpVer = 0;
 
         this._fbWidth = 0;
         this._fbHeight = 0;
 
         this._fbName = "";
-
-        this._capabilities = { power: false };
 
         this._supportsFence = false;
 
@@ -172,9 +157,6 @@ export default class RFB extends EventTargetMixin {
         this._mousePos = {};
         this._mouseButtonMask = 0;
         this._mouseLastMoveTime = 0;
-        this._viewportDragging = false;
-        this._viewportDragPos = {};
-        this._viewportHasMoved = false;
         this._accumulatedWheelDeltaX = 0;
         this._accumulatedWheelDeltaY = 0;
 
@@ -248,7 +230,6 @@ export default class RFB extends EventTargetMixin {
 
         // ===== PROPERTIES =====
 
-        this.dragViewport = false;
         this.focusOnClick = true;
 
         // When set, returns the desired framebuffer size in device pixels;
@@ -257,8 +238,6 @@ export default class RFB extends EventTargetMixin {
         this.computeTargetSize = null;
 
         this._viewOnly = false;
-        this._clipViewport = false;
-        this._clippingViewport = false;
         this._resizeSession = false;
 
         this._qualityLevel = 6;
@@ -281,27 +260,6 @@ export default class RFB extends EventTargetMixin {
         }
     }
 
-    get capabilities() { return this._capabilities; }
-
-    get clippingViewport() { return this._clippingViewport; }
-    _setClippingViewport(on) {
-        if (on === this._clippingViewport) {
-            return;
-        }
-        this._clippingViewport = on;
-        this.dispatchEvent(new CustomEvent("clippingviewport",
-                                           { detail: this._clippingViewport }));
-    }
-
-    get touchButton() { return 0; }
-    set touchButton(button) { Log.Warn("Using old API!"); }
-
-    get clipViewport() { return this._clipViewport; }
-    set clipViewport(viewport) {
-        this._clipViewport = viewport;
-        this._updateClip();
-    }
-
     get resizeSession() { return this._resizeSession; }
     set resizeSession(resize) {
         this._resizeSession = resize;
@@ -309,9 +267,6 @@ export default class RFB extends EventTargetMixin {
             this._requestRemoteResize();
         }
     }
-
-    get background() { return this._screen.style.background; }
-    set background(cssValue) { this._screen.style.background = cssValue; }
 
     get qualityLevel() {
         return this._qualityLevel;
@@ -360,30 +315,6 @@ export default class RFB extends EventTargetMixin {
         this._sock.off('error');
         this._sock.off('message');
         this._sock.off('open');
-    }
-
-    sendCtrlAltDel() {
-        if (this._rfbConnectionState !== 'connected' || this._viewOnly) { return; }
-        Log.Info("Sending Ctrl-Alt-Del");
-
-        this.sendKey(KeyTable.XK_Control_L, "ControlLeft", true);
-        this.sendKey(KeyTable.XK_Alt_L, "AltLeft", true);
-        this.sendKey(KeyTable.XK_Delete, "Delete", true);
-        this.sendKey(KeyTable.XK_Delete, "Delete", false);
-        this.sendKey(KeyTable.XK_Alt_L, "AltLeft", false);
-        this.sendKey(KeyTable.XK_Control_L, "ControlLeft", false);
-    }
-
-    machineShutdown() {
-        this._xvpOp(1, 2);
-    }
-
-    machineReboot() {
-        this._xvpOp(1, 3);
-    }
-
-    machineReset() {
-        this._xvpOp(1, 4);
     }
 
     // Send a key press. If 'down' is not specified then send a down key
@@ -492,40 +423,23 @@ export default class RFB extends EventTargetMixin {
 
     get screenElement() { return this._screen; }
 
-    getImageData() {
-        return this._display.getImageData();
-    }
-
-    toDataURL(type, encoderOptions) {
-        return this._display.toDataURL(type, encoderOptions);
-    }
-
-    toBlob(callback, type, quality) {
-        return this._display.toBlob(callback, type, quality);
-    }
-
     // ===== PRIVATE METHODS =====
 
     _connect() {
         Log.Debug(">> RFB.connect");
 
-        if (this._url) {
-            Log.Info(`connecting to ${this._url}`);
-            this._sock.open(this._url, this._wsProtocols);
-        } else {
-            Log.Info(`attaching ${this._rawChannel} to Websock`);
-            this._sock.attach(this._rawChannel);
+        Log.Info(`attaching ${this._rawChannel} to Websock`);
+        this._sock.attach(this._rawChannel);
 
-            if (this._sock.readyState === 'closed') {
-                throw Error("Cannot use already closed WebSocket/RTCDataChannel");
-            }
+        if (this._sock.readyState === 'closed') {
+            throw Error("Cannot use already closed WebSocket channel");
+        }
 
-            if (this._sock.readyState === 'open') {
-                // FIXME: _socketOpen() can in theory call _fail(), which
-                //        isn't allowed this early, but I'm not sure that can
-                //        happen without a bug messing up our state variables
-                this._socketOpen();
-            }
+        if (this._sock.readyState === 'open') {
+            // FIXME: _socketOpen() can in theory call _fail(), which
+            //        isn't allowed this early, but I'm not sure that can
+            //        happen without a bug messing up our state variables
+            this._socketOpen();
         }
 
         // Make our elements part of the page
@@ -674,7 +588,6 @@ export default class RFB extends EventTargetMixin {
         // If the window resized then our screen element might have
         // as well. Update the viewport dimensions.
         window.requestAnimationFrame(() => {
-            this._updateClip();
             this._updateScale();
             this._saveExpectedClientSize();
         });
@@ -689,35 +602,6 @@ export default class RFB extends EventTargetMixin {
             if (this._rfbConnectionState !== 'connected') { return; }
             this._requestRemoteResize();
         }, RESIZE_REQUEST_DEBOUNCE_MS);
-    }
-
-    // Update state of clipping in Display object, and make sure the
-    // configured viewport matches the current screen size
-    _updateClip() {
-        const curClip = this._display.clipViewport;
-        let newClip = this._clipViewport;
-
-        if (curClip !== newClip) {
-            this._display.clipViewport = newClip;
-        }
-
-        if (newClip) {
-            // When clipping is enabled, the screen is limited to
-            // the size of the container.
-            const size = this._screenSize();
-            this._display.viewportChangeSize(size.w, size.h);
-            this._fixScrollbars();
-            this._setClippingViewport(size.w < this._display.width ||
-                                      size.h < this._display.height);
-        } else {
-            this._setClippingViewport(false);
-        }
-
-        // When changing clipping we might show or hide scrollbars.
-        // This causes the expected client dimensions to change.
-        if (curClip !== newClip) {
-            this._saveExpectedClientSize();
-        }
     }
 
     // Stock noVNC forced display.scale to 1.0 here (or autoscaled to the
@@ -782,19 +666,6 @@ export default class RFB extends EventTargetMixin {
         }
         let r = this._screen.getBoundingClientRect();
         return { w: r.width, h: r.height };
-    }
-
-    _fixScrollbars() {
-        // This is a hack because Safari on macOS screws up the calculation
-        // for when scrollbars are needed. We get scrollbars when making the
-        // browser smaller, despite remote resize being enabled. So to fix it
-        // we temporarily toggle them off and on.
-        const orig = this._screen.style.overflow;
-        this._screen.style.overflow = 'hidden';
-        // Force Safari to recalculate the layout by asking for
-        // an element's dimensions
-        this._screen.getBoundingClientRect();
-        this._screen.style.overflow = orig;
     }
 
     /*
@@ -925,12 +796,6 @@ export default class RFB extends EventTargetMixin {
         this._updateConnectionState('disconnected');
 
         return false;
-    }
-
-    _setCapability(cap, val) {
-        this._capabilities[cap] = val;
-        this.dispatchEvent(new CustomEvent("capabilities",
-                                           { detail: { capabilities: this._capabilities } }));
     }
 
     _handleMessage() {
@@ -1066,55 +931,12 @@ export default class RFB extends EventTargetMixin {
         switch (ev.type) {
             case 'mousedown':
             case 'mouseup':
-                if (this.dragViewport) {
-                    if (down && !this._viewportDragging) {
-                        this._viewportDragging = true;
-                        this._viewportDragPos = {'x': pos.x, 'y': pos.y};
-                        this._viewportHasMoved = false;
-
-                        this._flushMouseMoveTimer(pos.x, pos.y);
-
-                        // Skip sending mouse events, instead save the current
-                        // mouse mask so we can send it later.
-                        this._mouseButtonMask = bmask;
-                        break;
-                    } else {
-                        this._viewportDragging = false;
-
-                        // If we actually performed a drag then we are done
-                        // here and should not send any mouse events
-                        if (this._viewportHasMoved) {
-                            this._mouseButtonMask = bmask;
-                            break;
-                        }
-                        // Otherwise we treat this as a mouse click event.
-                        // Send the previously saved button mask, followed
-                        // by the current button mask at the end of this
-                        // function.
-                        this._sendMouse(pos.x, pos.y,  this._mouseButtonMask);
-                    }
-                }
                 if (down) {
                     setCapture(this._canvas);
                 }
                 this._handleMouseButton(pos.x, pos.y, bmask);
                 break;
             case 'mousemove':
-                if (this._viewportDragging) {
-                    const deltaX = this._viewportDragPos.x - pos.x;
-                    const deltaY = this._viewportDragPos.y - pos.y;
-
-                    if (this._viewportHasMoved || (Math.abs(deltaX) > dragThreshold ||
-                                                   Math.abs(deltaY) > dragThreshold)) {
-                        this._viewportHasMoved = true;
-
-                        this._viewportDragPos = {'x': pos.x, 'y': pos.y};
-                        this._display.viewportChangePos(deltaX, deltaY);
-                    }
-
-                    // Skip sending mouse events
-                    break;
-                }
                 this._handleMouseMove(pos.x, pos.y);
                 break;
         }
@@ -1248,11 +1070,7 @@ export default class RFB extends EventTargetMixin {
 
         const sversion = this._sock.rQshiftStr(12).substr(4, 7);
         Log.Info("Server ProtocolVersion: " + sversion);
-        let isRepeater = 0;
         switch (sversion) {
-            case "000.000":  // UltraVNC repeater
-                isRepeater = 1;
-                break;
             case "003.003":
             case "003.006":  // UltraVNC
                 this._rfbVersion = 3.3;
@@ -1269,16 +1087,6 @@ export default class RFB extends EventTargetMixin {
                 break;
             default:
                 return this._fail("Invalid server version " + sversion);
-        }
-
-        if (isRepeater) {
-            let repeaterID = "ID:" + this._repeaterID;
-            while (repeaterID.length < 250) {
-                repeaterID += "\0";
-            }
-            this._sock.sQpushString(repeaterID);
-            this._sock.flush();
-            return true;
         }
 
         if (this._rfbVersion > this._rfbMaxVersion) {
@@ -1514,7 +1322,6 @@ export default class RFB extends EventTargetMixin {
         encs.push(encodings.pseudoEncodingQEMUExtendedKeyEvent);
         encs.push(encodings.pseudoEncodingQEMULedEvent);
         encs.push(encodings.pseudoEncodingExtendedDesktopSize);
-        encs.push(encodings.pseudoEncodingXvp);
         encs.push(encodings.pseudoEncodingFence);
         encs.push(encodings.pseudoEncodingContinuousUpdates);
         encs.push(encodings.pseudoEncodingDesktopName);
@@ -1555,7 +1362,7 @@ export default class RFB extends EventTargetMixin {
                 return this._handleSecurityReason();
 
             case 'ClientInitialisation':
-                this._sock.sQpush8(this._shared ? 1 : 0); // ClientInitialisation
+                this._sock.sQpush8(1); // ClientInitialisation, always shared
                 this._sock.flush();
                 this._rfbInitState = 'ServerInitialisation';
                 return true;
@@ -1785,29 +1592,6 @@ export default class RFB extends EventTargetMixin {
         return true;
     }
 
-    _handleXvpMsg() {
-        if (this._sock.rQwait("XVP version and message", 3, 1)) { return false; }
-        this._sock.rQskipBytes(1);  // Padding
-        const xvpVer = this._sock.rQshift8();
-        const xvpMsg = this._sock.rQshift8();
-
-        switch (xvpMsg) {
-            case 0:  // XVP_FAIL
-                Log.Error("XVP operation failed");
-                break;
-            case 1:  // XVP_INIT
-                this._rfbXvpVer = xvpVer;
-                Log.Info("XVP extensions enabled (version " + this._rfbXvpVer + ")");
-                this._setCapability("power", true);
-                break;
-            default:
-                this._fail("Illegal server XVP message (msg: " + xvpMsg + ")");
-                break;
-        }
-
-        return true;
-    }
-
     _normalMsg() {
         let msgType;
         if (this._FBU.rects > 0) {
@@ -1855,9 +1639,6 @@ export default class RFB extends EventTargetMixin {
 
             case 248: // ServerFence
                 return this._handleServerFenceMsg();
-
-            case 250:  // XVP
-                return this._handleXvpMsg();
 
             default:
                 this._fail("Unexpected server message (type " + msgType + ")");
@@ -2100,7 +1881,6 @@ export default class RFB extends EventTargetMixin {
         this._display.resize(this._fbWidth, this._fbHeight);
 
         // Adjust the visible viewport based on the new dimensions
-        this._updateClip();
         this._updateScale();
 
         this._updateContinuousUpdates();
@@ -2112,13 +1892,6 @@ export default class RFB extends EventTargetMixin {
             "fbresize",
             { detail: { width: width, height: height } }));
     }
-
-    _xvpOp(ver, op) {
-        if (this._rfbXvpVer < ver) { return; }
-        Log.Info("Sending XVP operation " + op + " (version " + ver + ")");
-        RFB.messages.xvpOp(this._sock, ver, op);
-    }
-
 }
 
 // Class Methods
@@ -2423,17 +2196,6 @@ RFB.messages = {
         sock.sQpush16(y);
         sock.sQpush16(w);
         sock.sQpush16(h);
-
-        sock.flush();
-    },
-
-    xvpOp(sock, ver, op) {
-        sock.sQpush8(250); // msg-type
-
-        sock.sQpush8(0); // padding
-
-        sock.sQpush8(ver);
-        sock.sQpush8(op);
 
         sock.flush();
     }

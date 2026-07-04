@@ -2,7 +2,7 @@ import Keyboard from "@novnc-core/input/keyboard.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseConnectionConfig } from "./connectionConfig";
 import { HiDpiRFB } from "./HiDpiRFB";
-import { computeResizeTarget, updateNativeDisplayFloor } from "./resizeSizing";
+import { computeResizeTarget } from "./resizeSizing";
 import { type MouseButtonState, toRfbButtonMask } from "./rfbInput";
 
 interface ConnectOptions {
@@ -234,9 +234,7 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       let pendingTapTimer: ReturnType<typeof setTimeout> | null = null;
       let cursorPosition = { x: 0, y: 0 };
       let hasCursorPosition = false;
-      let nativeDisplaySize: { width: number; height: number } | null = null;
-      let nativeDisplayDprFloor: number | null = null;
-      let lastRequestedSize = { width: 0, height: 0 };
+      let touchMinimumSize: { width: number; height: number } | null = null;
       let pendingResizeTarget: { width: number; height: number } | null = null;
       let pendingResizeRetries = 0;
       let resizeRetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -271,8 +269,10 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
           viewportWidth: vp ? vp.width : window.innerWidth,
           viewportHeight: vp ? vp.height : window.innerHeight,
           dpr,
-          nativeDisplaySize,
-          nativeDisplayDprFloor,
+          // Touch devices keep the session at least at the geometry found on
+          // connect so pinch-zoom has full resolution; desktop follows the
+          // viewport exactly in both directions.
+          minimumSize: useHiDpiSessionSizing ? null : touchMinimumSize,
         });
       }
 
@@ -1203,17 +1203,21 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       }
 
       // Resize the remote desktop to the viewport size (in device pixels for
-      // HiDPI), min-clamped to native VNC resolution. noVNC pulls the actual
-      // target from rfb.computeTargetSize when we poke requestResize().
+      // HiDPI). noVNC pulls the actual target from rfb.computeTargetSize when
+      // we poke requestResize(). Compare against the real framebuffer — not
+      // the last request — so a request that never landed can't permanently
+      // swallow future resizes to the same target.
       function doResize() {
         if (!canSendResize) return;
 
         const { width: w, height: h } = computeSessionSizeTarget();
 
-        if (lastRequestedSize.width === w && lastRequestedSize.height === h) {
+        if (getRemoteWidth() === w && getRemoteHeight() === h) {
+          pendingResizeTarget = null;
+          pendingResizeRetries = 0;
+          clearResizeRetryTimer();
           return;
         }
-        lastRequestedSize = { width: w, height: h };
         pendingResizeTarget = { width: w, height: h };
         pendingResizeRetries = 0;
 
@@ -1261,16 +1265,9 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         const { width, height } = (
           event as CustomEvent<{ width: number; height: number }>
         ).detail;
-        const nextNativeFloor = updateNativeDisplayFloor({
-          currentNativeDisplaySize: nativeDisplaySize,
-          currentNativeDisplayDprFloor: nativeDisplayDprFloor,
-          nextWidth: width,
-          nextHeight: height,
-          currentDpr: window.devicePixelRatio || 1,
-          useHiDpiSessionSizing,
-        });
-        nativeDisplaySize = nextNativeFloor.nativeDisplaySize;
-        nativeDisplayDprFloor = nextNativeFloor.nativeDisplayDprFloor;
+        if (!useHiDpiSessionSizing && !touchMinimumSize) {
+          touchMinimumSize = { width, height };
+        }
         if (
           pendingResizeTarget &&
           width === pendingResizeTarget.width &&
@@ -1296,12 +1293,29 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         window.visualViewport.addEventListener("resize", scheduleResize);
       }
 
+      // devicePixelRatio changes (moving the window between monitors with
+      // different scale factors, browser zoom) don't reliably fire a resize
+      // event, but they change the HiDPI session target. matchMedia only
+      // fires when the current dpr stops matching, so re-arm on each change.
+      let dprQuery: MediaQueryList | null = null;
+      function handleDprChange(): void {
+        watchDprChanges();
+        scheduleResize();
+      }
+      function watchDprChanges(): void {
+        dprQuery?.removeEventListener("change", handleDprChange);
+        dprQuery = window.matchMedia(
+          `(resolution: ${window.devicePixelRatio || 1}dppx)`,
+        );
+        dprQuery.addEventListener("change", handleDprChange);
+      }
+      if (useHiDpiSessionSizing) watchDprChanges();
+
       // RFB lifecycle events
       rfb.addEventListener("connect", () => {
         if (connectionId !== connectionIdRef.current) return;
         setState("connected");
         canSendResize = true;
-        lastRequestedSize = { width: 0, height: 0 };
         doResize();
         scheduleResize();
       });
@@ -1374,6 +1388,8 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         if (window.visualViewport) {
           window.visualViewport.removeEventListener("resize", scheduleResize);
         }
+        dprQuery?.removeEventListener("change", handleDprChange);
+        dprQuery = null;
         if (overlayEl.parentElement === containerEl) {
           containerEl.removeChild(overlayEl);
         }

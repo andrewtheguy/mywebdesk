@@ -3,7 +3,6 @@
  * Copyright (C) 2018 The noVNC authors
  * Licensed under MPL 2.0 or any later version (see LICENSE.txt)
  */
-// @ts-nocheck
 
 /*
  * Fallback mapping between HTML key codes (physical keys) and
@@ -17,7 +16,7 @@
 
 /* eslint-disable key-spacing */
 
-export default {
+const fixedkeys: Record<string, string> = {
 
 // 3.1.1.1. Writing System Keys
 
@@ -128,3 +127,5 @@ export default {
     'AudioVolumeUp':    'AudioVolumeUp',
     'WakeUp':           'WakeUp',
 };
+
+export default fixedkeys;

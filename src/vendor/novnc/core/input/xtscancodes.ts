@@ -4,8 +4,7 @@
  * To re-generate, run:
  *   keymap-gen code-map --lang=js keymaps.csv html atset1
 */
-// @ts-nocheck
-export default {
+const xtScancodes: Record<string, number> = {
   "Again": 0xe005, /* html:Again (Again) -> linux:129 (KEY_AGAIN) -> atset1:57349 */
   "AltLeft": 0x38, /* html:AltLeft (AltLeft) -> linux:56 (KEY_LEFTALT) -> atset1:56 */
   "AltRight": 0xe038, /* html:AltRight (AltRight) -> linux:100 (KEY_RIGHTALT) -> atset1:57400 */
@@ -172,3 +171,5 @@ export default {
   "Undo": 0xe007, /* html:Undo (Undo) -> linux:131 (KEY_UNDO) -> atset1:57351 */
   "WakeUp": 0xe063, /* html:WakeUp (WakeUp) -> linux:143 (KEY_WAKEUP) -> atset1:57443 */
 };
+
+export default xtScancodes;

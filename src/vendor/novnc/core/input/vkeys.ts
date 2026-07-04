@@ -3,14 +3,13 @@
  * Copyright (C) 2018 The noVNC authors
  * Licensed under MPL 2.0 or any later version (see LICENSE.txt)
  */
-// @ts-nocheck
 
 /*
  * Mapping between Microsoft® Windows® Virtual-Key codes and
  * HTML key codes.
  */
 
-export default {
+const vkeys: Record<number, string> = {
     0x08: 'Backspace',
     0x09: 'Tab',
     0x0a: 'NumpadClear',
@@ -115,3 +114,5 @@ export default {
     0xb7: 'LaunchApp2',
     0xe1: 'AltRight', // Only when it is AltGraph
 };
+
+export default vkeys;

@@ -142,5 +142,9 @@ TypeScript migration:
 
 - Renamed the remaining vendored JavaScript modules under this fork from
   `.js` to `.ts`, updated internal import specifiers to extensionless module
-  paths, and added `// @ts-nocheck` pragmas after existing file headers so the
-  fork remains behaviorally unchanged while being consumed as TypeScript.
+  paths, and initially added `// @ts-nocheck` pragmas after existing file
+  headers so the fork remained behaviorally unchanged while being consumed as
+  TypeScript.
+- Removed `// @ts-nocheck` from the constant/data modules and added focused
+  table types: `core/encodings.ts`, `core/input/{domkeytable,fixedkeys,keysym,
+  keysymdef,vkeys,xtscancodes}.ts`, and `vendor/pako/lib/zlib/messages.ts`.

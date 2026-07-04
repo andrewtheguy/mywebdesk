@@ -1,5 +1,4 @@
-// @ts-nocheck
-export default {
+const messages: Record<number, string> = {
   2:      'need dictionary',     /* Z_NEED_DICT       2  */
   1:      'stream end',          /* Z_STREAM_END      1  */
   0:      '',                    /* Z_OK              0  */
@@ -10,3 +9,5 @@ export default {
   '-5':   'buffer error',        /* Z_BUF_ERROR     (-5) */
   '-6':   'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
+
+export default messages;

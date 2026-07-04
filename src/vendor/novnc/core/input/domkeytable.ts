@@ -3,7 +3,6 @@
  * Copyright (C) 2018 The noVNC authors
  * Licensed under MPL 2.0 or any later version (see LICENSE.txt)
  */
-// @ts-nocheck
 
 import KeyTable from "./keysym";
 
@@ -14,22 +13,24 @@ import KeyTable from "./keysym";
  * See https://www.w3.org/TR/uievents-key/ for possible values.
  */
 
-const DOMKeyTable = {};
+type KeyLocationMap = [number, number, number, number];
 
-function addStandard(key, standard) {
+const DOMKeyTable: Record<string, KeyLocationMap> = {};
+
+function addStandard(key: string, standard: number | undefined) {
     if (standard === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
     if (key in DOMKeyTable) throw new Error("Duplicate entry for key \"" + key + "\"");
     DOMKeyTable[key] = [standard, standard, standard, standard];
 }
 
-function addLeftRight(key, left, right) {
+function addLeftRight(key: string, left: number | undefined, right: number | undefined) {
     if (left === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
     if (right === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
     if (key in DOMKeyTable) throw new Error("Duplicate entry for key \"" + key + "\"");
     DOMKeyTable[key] = [left, left, right, left];
 }
 
-function addNumpad(key, standard, numpad) {
+function addNumpad(key: string, standard: number | undefined, numpad: number | undefined) {
     if (standard === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
     if (numpad === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
     if (key in DOMKeyTable) throw new Error("Duplicate entry for key \"" + key + "\"");

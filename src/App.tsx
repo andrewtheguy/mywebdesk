@@ -1076,6 +1076,7 @@ export default function App() {
               </form>
             </div>
           )}
+          <div className="login-version">v{__APP_VERSION__}</div>
         </div>
       )}
 

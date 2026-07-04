@@ -47,6 +47,17 @@
   font-size: 1.2rem;
 }
 
+.login-version {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: system-ui, sans-serif;
+  font-size: 0.8rem;
+}
+
 .status.error {
   color: #ff6b6b;
 }

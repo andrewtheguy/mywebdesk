@@ -5,22 +5,35 @@
  *
  * See README.md for usage and integration instructions.
  */
-// @ts-nocheck
 
-import { deflateInit, deflate } from "../vendor/pako/lib/zlib/deflate";
-import { Z_FULL_FLUSH, Z_DEFAULT_COMPRESSION } from "../vendor/pako/lib/zlib/deflate";
-import ZStream from "../vendor/pako/lib/zlib/zstream";
+import {
+    Z_FULL_FLUSH,
+    ZStream,
+    zlibDeflate,
+    zlibDeflateInit,
+} from "pako";
+
+const Z_DEFAULT_COMPRESSION = -1;
+
+type RfbZStream = Omit<ZStream, "input" | "output"> & {
+    input: Uint8Array | null;
+    output: Uint8Array;
+};
 
 export default class Deflator {
+    private strm: RfbZStream;
+    private chunkSize: number;
+    private outputBuffer: Uint8Array;
+
     constructor() {
-        this.strm = new ZStream();
+        this.strm = new ZStream() as RfbZStream;
         this.chunkSize = 1024 * 10 * 10;
         this.outputBuffer = new Uint8Array(this.chunkSize);
 
-        deflateInit(this.strm, Z_DEFAULT_COMPRESSION);
+        zlibDeflateInit(this.strm as ZStream, Z_DEFAULT_COMPRESSION);
     }
 
-    deflate(inData) {
+    deflate(inData: Uint8Array): Uint8Array {
         /* eslint-disable camelcase */
         this.strm.input = inData;
         this.strm.avail_in = this.strm.input.length;
@@ -30,7 +43,7 @@ export default class Deflator {
         this.strm.next_out = 0;
         /* eslint-enable camelcase */
 
-        let lastRet = deflate(this.strm, Z_FULL_FLUSH);
+        let lastRet = zlibDeflate(this.strm as ZStream, Z_FULL_FLUSH);
         let outData = new Uint8Array(this.strm.output.buffer, 0, this.strm.next_out);
 
         if (lastRet < 0) {
@@ -49,7 +62,7 @@ export default class Deflator {
                 this.strm.avail_out = this.chunkSize;
                 /* eslint-enable camelcase */
 
-                lastRet = deflate(this.strm, Z_FULL_FLUSH);
+                lastRet = zlibDeflate(this.strm as ZStream, Z_FULL_FLUSH);
 
                 if (lastRet < 0) {
                     throw new Error("zlib deflate failed");

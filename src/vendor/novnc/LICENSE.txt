@@ -40,8 +40,6 @@ licenses (all MPL 2.0 compatible):
 
     core/des.js             : Various BSD style licenses
 
-    vendor/pako/            : MIT
-
 Any other files not mentioned above are typically marked with
 a copyright/license header at the top of the file. The default noVNC
 license is MPL-2.0.
@@ -52,8 +50,6 @@ The following license texts are included:
     docs/LICENSE.OFL-1.1
     docs/LICENSE.BSD-3-Clause (New BSD)
     docs/LICENSE.BSD-2-Clause (Simplified BSD / FreeBSD)
-    vendor/pako/LICENSE (MIT)
-
 Or alternatively the license texts may be found here:
 
     http://www.mozilla.org/MPL/2.0/

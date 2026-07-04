@@ -4,13 +4,12 @@
 - Source: npm package `@novnc/novnc@1.7.0` (copied byte-identical, then locally
   modified as recorded below)
 - License: MPL-2.0 (see `LICENSE.txt`; per-file headers must be preserved).
-  The bundled pako (zlib) sources under `vendor/pako/` carry their own license
-  (`vendor/pako/LICENSE`).
+  zlib support now comes from the external npm package `pako` (MIT).
 
 ## Omitted upstream files
 
-- `vendor/pako/lib/zlib/constants.js`, `vendor/pako/lib/zlib/gzheader.js` —
-  not imported by anything in `core/`.
+- The entire bundled `vendor/pako/` subtree was removed; `core/inflator.ts`
+  and `core/deflator.ts` import `pako`'s public low-level zlib exports instead.
 
 ## Local modifications
 
@@ -147,11 +146,9 @@ TypeScript migration:
   TypeScript.
 - Removed `// @ts-nocheck` from the constant/data modules and added focused
   table types: `core/encodings.ts`, `core/input/{domkeytable,fixedkeys,keysym,
-  keysymdef,vkeys,xtscancodes}.ts`, and `vendor/pako/lib/zlib/messages.ts`.
+  keysymdef,vkeys,xtscancodes}.ts`.
 - Removed `// @ts-nocheck` from the next small helper modules and added narrow
   signatures/local interfaces: `core/util/browser.ts`,
   `core/util/events.ts`, `core/util/int.ts`, `core/util/logging.ts`,
   `core/util/strings.ts`, `core/decoders/copyrect.ts`,
-  `core/decoders/raw.ts`, `vendor/pako/lib/utils/common.ts`,
-  `vendor/pako/lib/zlib/adler32.ts`, `vendor/pako/lib/zlib/crc32.ts`, and
-  `vendor/pako/lib/zlib/zstream.ts`.
+  `core/decoders/raw.ts`, `core/inflator.ts`, and `core/deflator.ts`.

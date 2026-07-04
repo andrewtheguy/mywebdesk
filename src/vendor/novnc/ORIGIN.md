@@ -151,4 +151,5 @@ TypeScript migration:
   signatures/local interfaces: `core/util/browser.ts`,
   `core/util/events.ts`, `core/util/int.ts`, `core/util/logging.ts`,
   `core/util/strings.ts`, `core/decoders/copyrect.ts`,
-  `core/decoders/raw.ts`, `core/inflator.ts`, and `core/deflator.ts`.
+  `core/decoders/raw.ts`, `core/input/util.ts`, `core/inflator.ts`, and
+  `core/deflator.ts`.

@@ -110,6 +110,15 @@ by any remaining fork or app code):
   the former defaults are advertised as fixed `QUALITY_LEVEL`/
   `COMPRESSION_LEVEL` constants.
 
+Modernized onto built-in browser APIs:
+
+- `core/util/eventtarget.js` deleted; `RFB` extends the native
+  `EventTarget` (identical add/remove/dispatch semantics for the
+  function listeners the app uses).
+- `core/base64.js` deleted; the Tight JPEG data-URI path in
+  `core/display.js` uses native `btoa` (chunked `String.fromCharCode` to
+  stay under the argument limit).
+
 App-specific behavior folded into `core/rfb.js` (formerly the `HiDpiRFB`
 subclass in the app):
 

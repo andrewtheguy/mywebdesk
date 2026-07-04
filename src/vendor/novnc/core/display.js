@@ -7,7 +7,6 @@
  */
 
 import * as Log from './util/logging.js';
-import Base64 from "./base64.js";
 
 export default class Display {
     constructor(target) {
@@ -230,8 +229,15 @@ export default class Display {
             return;
         }
 
+        // Convert in chunks to avoid blowing the argument limit of
+        // String.fromCharCode on large rects
+        let binary = "";
+        for (let i = 0; i < arr.length; i += 4096) {
+            binary += String.fromCharCode.apply(null, arr.subarray(i, i + 4096));
+        }
+
         const img = new Image();
-        img.src = "data: " + mime + ";base64," + Base64.encode(arr);
+        img.src = "data:" + mime + ";base64," + btoa(binary);
 
         this._renderQPush({
             'type': 'img',

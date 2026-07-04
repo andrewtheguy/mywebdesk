@@ -10,7 +10,6 @@
 import { toUnsigned32bit, toSigned32bit } from './util/int.js';
 import * as Log from './util/logging.js';
 import { encodeUTF8, decodeUTF8 } from './util/strings.js';
-import EventTargetMixin from './util/eventtarget.js';
 import Display from "./display.js";
 import Inflator from "./inflator.js";
 import Deflator from "./deflator.js";
@@ -55,7 +54,7 @@ const extendedClipboardActionPeek    = 1 << 26;
 const extendedClipboardActionNotify  = 1 << 27;
 const extendedClipboardActionProvide = 1 << 28;
 
-export default class RFB extends EventTargetMixin {
+export default class RFB extends EventTarget {
     constructor(target, channel) {
         if (!target) {
             throw new Error("Must specify target");

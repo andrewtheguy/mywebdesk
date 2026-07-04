@@ -10,10 +10,6 @@
  * Cross-browser event and position routines
  */
 
-export function getPointerEvent(e) {
-    return e.changedTouches ? e.changedTouches[0] : e.touches ? e.touches[0] : e;
-}
-
 export function stopEvent(e) {
     e.stopPropagation();
     e.preventDefault();

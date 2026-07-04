@@ -42,6 +42,10 @@ const MOUSE_MOVE_DELAY = 17;
 const WHEEL_STEP = 50; // Pixels needed for one step
 const WHEEL_LINE_HEIGHT = 19; // Assumed pixels for one line step
 
+// Tight encoding quality/compression advertised to the server
+const QUALITY_LEVEL = 6;
+const COMPRESSION_LEVEL = 2;
+
 // Security types (only None is supported; the proxy in front of this
 // client performs the real VNC authentication server-side)
 const securityTypeNone              = 1;
@@ -226,9 +230,6 @@ export default class RFB extends EventTargetMixin {
 
         this._viewOnly = false;
         this._resizeSession = false;
-
-        this._qualityLevel = 6;
-        this._compressionLevel = 2;
     }
 
     // ===== PROPERTIES =====
@@ -252,46 +253,6 @@ export default class RFB extends EventTargetMixin {
         this._resizeSession = resize;
         if (resize) {
             this._requestRemoteResize();
-        }
-    }
-
-    get qualityLevel() {
-        return this._qualityLevel;
-    }
-    set qualityLevel(qualityLevel) {
-        if (!Number.isInteger(qualityLevel) || qualityLevel < 0 || qualityLevel > 9) {
-            Log.Error("qualityLevel must be an integer between 0 and 9");
-            return;
-        }
-
-        if (this._qualityLevel === qualityLevel) {
-            return;
-        }
-
-        this._qualityLevel = qualityLevel;
-
-        if (this._rfbConnectionState === 'connected') {
-            this._sendEncodings();
-        }
-    }
-
-    get compressionLevel() {
-        return this._compressionLevel;
-    }
-    set compressionLevel(compressionLevel) {
-        if (!Number.isInteger(compressionLevel) || compressionLevel < 0 || compressionLevel > 9) {
-            Log.Error("compressionLevel must be an integer between 0 and 9");
-            return;
-        }
-
-        if (this._compressionLevel === compressionLevel) {
-            return;
-        }
-
-        this._compressionLevel = compressionLevel;
-
-        if (this._rfbConnectionState === 'connected') {
-            this._sendEncodings();
         }
     }
 
@@ -1291,9 +1252,10 @@ export default class RFB extends EventTargetMixin {
         }
         encs.push(encodings.encodingRaw);
 
-        // Psuedo-encoding settings
-        encs.push(encodings.pseudoEncodingQualityLevel0 + this._qualityLevel);
-        encs.push(encodings.pseudoEncodingCompressLevel0 + this._compressionLevel);
+        // Psuedo-encoding settings (fixed at noVNC's former defaults; the
+        // runtime qualityLevel/compressionLevel knobs were never used)
+        encs.push(encodings.pseudoEncodingQualityLevel0 + QUALITY_LEVEL);
+        encs.push(encodings.pseudoEncodingCompressLevel0 + COMPRESSION_LEVEL);
 
         encs.push(encodings.pseudoEncodingDesktopSize);
         encs.push(encodings.pseudoEncodingLastRect);

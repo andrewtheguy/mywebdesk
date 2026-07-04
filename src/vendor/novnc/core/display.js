@@ -42,9 +42,6 @@ export default class Display {
 
         this._targetCtx = this._target.getContext('2d');
 
-        // the visible canvas viewport (i.e. what actually gets seen)
-        this._viewportLoc = { 'x': 0, 'y': 0, 'w': this._target.width, 'h': this._target.height };
-
         // The hidden canvas, where we do the actual rendering
         this._backbuffer = document.createElement('canvas');
         this._drawCtx = this._backbuffer.getContext('2d');
@@ -60,7 +57,6 @@ export default class Display {
         // ===== PROPERTIES =====
 
         this._scale = 1.0;
-        this._clipViewport = false;
     }
 
     // ===== PROPERTIES =====
@@ -70,120 +66,20 @@ export default class Display {
         this._rescale(scale);
     }
 
-    get clipViewport() { return this._clipViewport; }
-    set clipViewport(viewport) {
-        this._clipViewport = viewport;
-        // May need to readjust the viewport dimensions
-        const vp = this._viewportLoc;
-        this.viewportChangeSize(vp.w, vp.h);
-        this.viewportChangePos(0, 0);
-    }
-
-    get width() {
-        return this._fbWidth;
-    }
-
-    get height() {
-        return this._fbHeight;
-    }
-
     // ===== PUBLIC METHODS =====
-
-    viewportChangePos(deltaX, deltaY) {
-        const vp = this._viewportLoc;
-        deltaX = Math.floor(deltaX);
-        deltaY = Math.floor(deltaY);
-
-        if (!this._clipViewport) {
-            deltaX = -vp.w;  // clamped later of out of bounds
-            deltaY = -vp.h;
-        }
-
-        const vx2 = vp.x + vp.w - 1;
-        const vy2 = vp.y + vp.h - 1;
-
-        // Position change
-
-        if (deltaX < 0 && vp.x + deltaX < 0) {
-            deltaX = -vp.x;
-        }
-        if (vx2 + deltaX >= this._fbWidth) {
-            deltaX -= vx2 + deltaX - this._fbWidth + 1;
-        }
-
-        if (vp.y + deltaY < 0) {
-            deltaY = -vp.y;
-        }
-        if (vy2 + deltaY >= this._fbHeight) {
-            deltaY -= (vy2 + deltaY - this._fbHeight + 1);
-        }
-
-        if (deltaX === 0 && deltaY === 0) {
-            return;
-        }
-        Log.Debug("viewportChange deltaX: " + deltaX + ", deltaY: " + deltaY);
-
-        vp.x += deltaX;
-        vp.y += deltaY;
-
-        this._damage(vp.x, vp.y, vp.w, vp.h);
-
-        this.flip();
-    }
-
-    viewportChangeSize(width, height) {
-
-        if (!this._clipViewport ||
-            typeof(width) === "undefined" ||
-            typeof(height) === "undefined") {
-
-            Log.Debug("Setting viewport to full display region");
-            width = this._fbWidth;
-            height = this._fbHeight;
-        }
-
-        width = Math.floor(width);
-        height = Math.floor(height);
-
-        if (width > this._fbWidth) {
-            width = this._fbWidth;
-        }
-        if (height > this._fbHeight) {
-            height = this._fbHeight;
-        }
-
-        const vp = this._viewportLoc;
-        if (vp.w !== width || vp.h !== height) {
-            vp.w = width;
-            vp.h = height;
-
-            const canvas = this._target;
-            canvas.width = width;
-            canvas.height = height;
-
-            // The position might need to be updated if we've grown
-            this.viewportChangePos(0, 0);
-
-            this._damage(vp.x, vp.y, vp.w, vp.h);
-            this.flip();
-
-            // Update the visible size of the target canvas
-            this._rescale(this._scale);
-        }
-    }
 
     absX(x) {
         if (this._scale === 0) {
             return 0;
         }
-        return toSigned32bit(x / this._scale + this._viewportLoc.x);
+        return toSigned32bit(x / this._scale);
     }
 
     absY(y) {
         if (this._scale === 0) {
             return 0;
         }
-        return toSigned32bit(y / this._scale + this._viewportLoc.y);
+        return toSigned32bit(y / this._scale);
     }
 
     resize(width, height) {
@@ -213,23 +109,19 @@ export default class Display {
             }
         }
 
-        // Readjust the viewport as it may be incorrectly sized
-        // and positioned
-        const vp = this._viewportLoc;
-        this.viewportChangeSize(vp.w, vp.h);
-        this.viewportChangePos(0, 0);
-    }
+        // Keep the visible canvas the same size as the framebuffer (the
+        // fork has no viewport clipping; the app scales via CSS transform)
+        const target = this._target;
+        if (target.width !== width || target.height !== height) {
+            target.width = width;
+            target.height = height;
 
-    getImageData() {
-        return this._drawCtx.getImageData(0, 0, this.width, this.height);
-    }
+            this._damage(0, 0, width, height);
+            this.flip();
 
-    toDataURL(type, encoderOptions) {
-        return this._backbuffer.toDataURL(type, encoderOptions);
-    }
-
-    toBlob(callback, type, quality) {
-        return this._backbuffer.toBlob(callback, type, quality);
+            // Update the visible size of the target canvas
+            this._rescale(this._scale);
+        }
     }
 
     // Track what parts of the visible canvas that need updating
@@ -261,25 +153,11 @@ export default class Display {
             let w = this._damageBounds.right - x;
             let h = this._damageBounds.bottom - y;
 
-            let vx = x - this._viewportLoc.x;
-            let vy = y - this._viewportLoc.y;
-
-            if (vx < 0) {
-                w += vx;
-                x -= vx;
-                vx = 0;
+            if ((x + w) > this._fbWidth) {
+                w = this._fbWidth - x;
             }
-            if (vy < 0) {
-                h += vy;
-                y -= vy;
-                vy = 0;
-            }
-
-            if ((vx + w) > this._viewportLoc.w) {
-                w = this._viewportLoc.w - vx;
-            }
-            if ((vy + h) > this._viewportLoc.h) {
-                h = this._viewportLoc.h - vy;
+            if ((y + h) > this._fbHeight) {
+                h = this._fbHeight - y;
             }
 
             if ((w > 0) && (h > 0)) {
@@ -288,7 +166,7 @@ export default class Display {
                 //        noticed any problem yet.
                 this._targetCtx.drawImage(this._backbuffer,
                                           x, y, w, h,
-                                          vx, vy, w, h);
+                                          x, y, w, h);
             }
 
             this._damageBounds.left = this._damageBounds.top = 65535;
@@ -380,17 +258,6 @@ export default class Display {
         });
     }
 
-    videoFrame(x, y, width, height, frame) {
-        this._renderQPush({
-            'type': 'frame',
-            'frame': frame,
-            'x': x,
-            'y': y,
-            'width': width,
-            'height': height
-        });
-    }
-
     blitImage(x, y, width, height, arr, offset, fromQueue) {
         if (this._renderQ.length !== 0 && !fromQueue) {
             // NB(directxman12): it's technically more performant here to use preallocated arrays,
@@ -429,40 +296,17 @@ export default class Display {
         }
     }
 
-    autoscale(containerWidth, containerHeight) {
-        let scaleRatio;
-
-        if (containerWidth === 0 || containerHeight === 0) {
-            scaleRatio = 0;
-
-        } else {
-
-            const vp = this._viewportLoc;
-            const targetAspectRatio = containerWidth / containerHeight;
-            const fbAspectRatio = vp.w / vp.h;
-
-            if (fbAspectRatio >= targetAspectRatio) {
-                scaleRatio = containerWidth / vp.w;
-            } else {
-                scaleRatio = containerHeight / vp.h;
-            }
-        }
-
-        this._rescale(scaleRatio);
-    }
-
     // ===== PRIVATE METHODS =====
 
     _rescale(factor) {
         this._scale = factor;
-        const vp = this._viewportLoc;
 
         // NB(directxman12): If you set the width directly, or set the
         //                   style width to a number, the canvas is cleared.
         //                   However, if you set the style width to a string
         //                   ('NNNpx'), the canvas is scaled without clearing.
-        const width = factor * vp.w + 'px';
-        const height = factor * vp.h + 'px';
+        const width = factor * this._fbWidth + 'px';
+        const height = factor * this._fbHeight + 'px';
 
         if ((this._target.style.width !== width) ||
             (this._target.style.height !== height)) {
@@ -529,35 +373,6 @@ export default class Display {
                         a.img.addEventListener('load', this._resumeRenderQ);
                         // We need to wait for this image to 'load'
                         // to keep things in-order
-                        ready = false;
-                    }
-                    break;
-                case 'frame':
-                    if (a.frame.ready) {
-                        // The encoded frame may be larger than the rect due to
-                        // limitations of the encoder, so we need to crop the
-                        // frame.
-                        let frame = a.frame.frame;
-                        if (frame.codedWidth < a.width || frame.codedHeight < a.height) {
-                            Log.Warn("Decoded video frame does not cover its full rectangle area. Expecting at least " +
-                                      a.width + "x" + a.height + " but got " +
-                                      frame.codedWidth + "x" + frame.codedHeight);
-                        }
-                        const sx = 0;
-                        const sy = 0;
-                        const sw = a.width;
-                        const sh = a.height;
-                        const dx = a.x;
-                        const dy = a.y;
-                        const dw = sw;
-                        const dh = sh;
-                        this.drawImage(frame, sx, sy, sw, sh, dx, dy, dw, dh);
-                        frame.close();
-                    } else {
-                        let display = this;
-                        a.frame.promise.then(() => {
-                            display._scanRenderQ();
-                        });
                         ready = false;
                     }
                     break;

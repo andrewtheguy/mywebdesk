@@ -59,6 +59,34 @@ Further dead-for-this-app API removed from `core/rfb.js`:
   advertisements). A server may only send encodings the client advertises
   (plus Raw, which is always allowed); TigerVNC picks Tight.
 
+Dead-code sweep across the supporting modules (nothing here was referenced
+by any remaining fork or app code):
+
+- `core/util/browser.js` reduced to `isMac`/`isWindows`/`isIOS` (the only
+  detections the keyboard code uses). Deleted the WebCodecs H.264 probe left
+  over from the removed h264 decoder — including its module-top-level
+  `await` — plus `isTouchDevice`, `dragThreshold`, `supportsCursorURIs`,
+  `hasScrollbarGutter` and the remaining browser/engine sniffers.
+- `core/base64.js`: `decode`/`toBinaryTable`/`base64Pad` removed (their only
+  caller was the deleted H.264 probe); only `encode` remains, for the Tight
+  JPEG data-URI path in `core/display.js`.
+- `core/encodings.js`: dropped the constants for deleted decoders and
+  removed pseudo-encodings, the unused `…Level9` sentinels, and the
+  `encodingName()` debug helper.
+- `core/display.js`: removed the permanently-disabled viewport machinery
+  (`clipViewport`, `viewportChangePos/Size`, `_viewportLoc`; `resize()` now
+  sizes the visible canvas to the framebuffer directly), the H.264
+  `videoFrame()`/`'frame'` render-queue arm, and unused `autoscale()`,
+  `getImageData()`, `toDataURL()`, `toBlob()`, `width`/`height` getters.
+- `core/websock.js`: removed `open()` (the fork only ever `attach()`es an
+  existing WebSocket) and `rQlen()`.
+- `core/util/events.js`: removed the touch-era `getPointerEvent()`.
+- `core/util/logging.js`: fixed at the 'warn' level (`initLogging`/
+  `getLogging` were unreachable).
+- `core/rfb.js`: removed the `qualityLevel`/`compressionLevel` accessors;
+  the former defaults are advertised as fixed `QUALITY_LEVEL`/
+  `COMPRESSION_LEVEL` constants.
+
 App-specific behavior folded into `core/rfb.js` (formerly the `HiDpiRFB`
 subclass in the app):
 

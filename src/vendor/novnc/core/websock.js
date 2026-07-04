@@ -124,10 +124,6 @@ export default class Websock {
         return res >>> 0;
     }
 
-    rQlen() {
-        return this._rQlen - this._rQi;
-    }
-
     rQshiftStr(len) {
         let str = "";
         // Handle large arrays in steps to avoid long strings on the stack
@@ -249,10 +245,6 @@ export default class Websock {
         this._allocateBuffers();
         this._rQi = 0;
         this._websocket = null;
-    }
-
-    open(uri, protocols) {
-        this.attach(new WebSocket(uri, protocols));
     }
 
     attach(rawChannel) {

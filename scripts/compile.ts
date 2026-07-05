@@ -1,11 +1,11 @@
-// Compiles mywebdesk into a single self-contained binary.
+// Compiles remotex into a single self-contained binary.
 // Sequence: vite build -> embed dist assets -> bun build --compile.
 // Passing --define via Bun.spawn array args avoids the shell/JSON quoting
 // mess of putting it in a package.json script string.
 import { $ } from "bun";
 
 const version = (await Bun.file("package.json").json()).version ?? "dev";
-const outfile = Bun.argv[2] ?? "bin/mywebdesk";
+const outfile = Bun.argv[2] ?? "bin/remotex";
 
 // 1. Build the frontend (Vite -> dist/) and generate the embed module.
 await $`bun run build`;

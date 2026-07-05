@@ -87,11 +87,11 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
-            artifact: mywebdesk-linux-amd64
+            artifact: remotex-linux-amd64
           - runner: ubuntu-24.04-arm
-            artifact: mywebdesk-linux-arm64
+            artifact: remotex-linux-arm64
           - runner: macos-latest
-            artifact: mywebdesk-darwin-arm64
+            artifact: remotex-darwin-arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4

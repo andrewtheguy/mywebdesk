@@ -1,4 +1,4 @@
-# mywebdesk
+# remotex
 
 > [!WARNING]
 > This project is meant for a single user.
@@ -38,32 +38,32 @@ bun install
 bun run dev            # start the dev server + Vite
 ```
 
-Open http://localhost:5173 — Vite proxies `/vnc/ws` and `/api` to the Express server on `MYWEBDESK_SERVER_PORT` (default `18890`).
+Open http://localhost:5173 — Vite proxies `/vnc/ws` and `/api` to the Express server on `REMOTEX_SERVER_PORT` (default `18890`).
 
 ## Install (prebuilt binary)
 
 Single self-contained executable (Bun runtime + frontend embedded); no Bun or
 `node_modules` needed at runtime. Downloads from
-[Releases](https://github.com/andrewtheguy/mywebdesk/releases):
+[Releases](https://github.com/andrewtheguy/remotex/releases):
 
 ```bash
-curl -fsSL https://andrewtheguy.github.io/mywebdesk/install.sh | bash
+curl -fsSL https://andrewtheguy.github.io/remotex/install.sh | bash
 ```
 
-Installs to `~/.local/bin/mywebdesk`. Supported platforms: Linux (amd64, arm64),
+Installs to `~/.local/bin/remotex`. Supported platforms: Linux (amd64, arm64),
 macOS (arm64). The binary does **not** read a `.env` — pass config as real env
 vars:
 
 ```bash
 SITE_PASSWD=... VNC_HOST=127.0.0.1 VNC_PORT=5901 VNC_PASSWORD=... \
-  PORT=18890 HOST=127.0.0.1 mywebdesk
+  PORT=18890 HOST=127.0.0.1 remotex
 ```
 
 ## Build the binary yourself
 
 ```bash
 bun install
-bun run compile        # -> bin/mywebdesk (current platform)
+bun run compile        # -> bin/remotex (current platform)
 ```
 
 ## Production (from source)
@@ -83,7 +83,7 @@ Serves the built frontend from `dist/` on port 18890.
 | `VNC_HOST` | `127.0.0.1` | VNC server hostname |
 | `VNC_PORT` | `5901` | VNC server port |
 | `VNC_PASSWORD` | | VNC server password (used server-side; never sent to the client) |
-| `MYWEBDESK_SERVER_PORT` | `18890` | Dev server listen port (also used by Vite proxy target) |
+| `REMOTEX_SERVER_PORT` | `18890` | Dev server listen port (also used by Vite proxy target) |
 | `PORT` | `18890` | Production server listen port override |
 | `HOST` | `127.0.0.1` | Server bind address |
 
@@ -153,13 +153,13 @@ isolated from your normal browsing):
 # Chrome is already running and just opens a tab in the existing window.
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --app=https://your-host/ \
-  --user-data-dir="$HOME/.mywebdesk-chrome"
+  --user-data-dir="$HOME/.remotex-chrome"
 
 # Linux
-google-chrome --app=https://your-host/ --user-data-dir="$HOME/.mywebdesk-chrome"
+google-chrome --app=https://your-host/ --user-data-dir="$HOME/.remotex-chrome"
 
 # Windows
-chrome.exe --app=https://your-host/ --user-data-dir="%USERPROFILE%\.mywebdesk-chrome"
+chrome.exe --app=https://your-host/ --user-data-dir="%USERPROFILE%\.remotex-chrome"
 ```
 
 Optional: `--window-size=1280,800`, `--start-fullscreen`, or `--kiosk` (fullscreen,

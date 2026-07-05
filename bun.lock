@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "mywebdesk",
+      "name": "remotex",
       "dependencies": {
         "express": "^5.2.1",
         "pako": "^3.0.0",

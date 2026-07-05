@@ -1,6 +1,6 @@
 {
-  "name": "mywebdesk",
-  "short_name": "mywebdesk",
+  "name": "remotex",
+  "short_name": "remotex",
   "description": "Minimal, mobile-friendly VNC viewer",
   "start_url": "/",
   "scope": "/",

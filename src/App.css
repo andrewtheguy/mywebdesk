@@ -125,6 +125,25 @@
   border-color: #4a9eff;
 }
 
+.target-select {
+  display: block;
+  box-sizing: border-box;
+  width: min(320px, 80vw);
+  margin: 0 auto 16px;
+  padding: 10px;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 0.95rem;
+  font-family: system-ui, sans-serif;
+}
+
+.target-select:focus {
+  outline: none;
+  border-color: #4a9eff;
+}
+
 /* Buttons */
 .btn {
   display: inline-block;

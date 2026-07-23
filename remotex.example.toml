@@ -1,0 +1,28 @@
+# Copy to remotex.toml (or ~/.config/remotex/config.toml) and edit.
+
+[server]
+# Listen address/port for the web UI (both optional; defaults shown).
+host = "127.0.0.1"
+port = 18890
+# Base64-encoded username:bcrypt_hash for the web login (required).
+# Generate with: bun server/gen-htpasswd.ts <username>
+site_passwd = ""
+
+# VNC target profiles (at least one required). Each needs a unique name;
+# the profile to connect to is chosen in the UI after login.
+[[targets]]
+name = "example"
+host = "127.0.0.1"
+port = 5901
+password = ""
+
+# [[targets]]
+# name = "another-machine"
+# host = "10.0.0.2"
+# port = 5900
+# password = ""
+
+# Note: VNC servers without SetDesktopSize support (macOS Screen Sharing)
+# can't be resized from the browser; the display overflow scrolls instead.
+# To change the remote resolution, run tools/displaymode.swift on the Mac
+# manually (see its header comment).

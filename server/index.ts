@@ -9,7 +9,12 @@ import {
   isValidSession,
   verifyCredentials,
 } from "./auth.js";
-import { claimSession, hasActiveSession } from "./session.js";
+import { type CliOptions, loadConfig, parseCliArgs, USAGE } from "./config.js";
+import {
+  claimSession,
+  hasActiveSession,
+  validateSessionId,
+} from "./session.js";
 import { attachVncProxy, closeAll } from "./vncProxy.js";
 
 // Injected at compile time via `bun build --define`; falls back to "dev" when run
@@ -17,29 +22,38 @@ import { attachVncProxy, closeAll } from "./vncProxy.js";
 declare const BUILD_VERSION: string;
 const VERSION = typeof BUILD_VERSION !== "undefined" ? BUILD_VERSION : "dev";
 
-// Print version and exit before touching config, so `remotex --version` works
-// with no env set (install.sh uses this to smoke-test the downloaded binary).
-if (process.argv.includes("--version") || process.argv.includes("-v")) {
+let cli: CliOptions;
+try {
+  cli = parseCliArgs(process.argv.slice(2));
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  console.error(`\n${USAGE}`);
+  process.exit(1);
+}
+
+// Version/help exit before touching config, so `remotex --version` works with
+// no config file present (install.sh uses this to smoke-test the binary).
+if (cli.version) {
   console.log(VERSION);
   process.exit(0);
 }
+if (cli.help) {
+  console.log(USAGE);
+  process.exit(0);
+}
 
-initHtpasswd();
+const config = await loadConfig(cli).catch((err: unknown) => {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+});
+
+initHtpasswd(config.sitePasswd);
 
 const app = express();
 app.use(express.json());
 const isProduction = process.env.NODE_ENV === "production";
-const PORT = Number.parseInt(
-  isProduction
-    ? process.env.PORT || process.env.REMOTEX_SERVER_PORT || "18890"
-    : process.env.REMOTEX_SERVER_PORT || "18890",
-  10,
-);
-const HOST = process.env.HOST || "127.0.0.1";
-
-const VNC_HOST = process.env.VNC_HOST || "127.0.0.1";
-const VNC_PORT = Number.parseInt(process.env.VNC_PORT || "5901", 10);
-const VNC_PASSWORD = process.env.VNC_PASSWORD || "";
+const PORT = config.port;
+const HOST = config.host;
 
 const COOKIE_FLAGS = "HttpOnly; SameSite=Strict; Path=/";
 
@@ -104,9 +118,13 @@ app.use("/api/app", (req, res, next) => {
 // --- Authenticated app routes ---
 
 app.get("/api/app/config", (_req, res) => {
+  // Target passwords stay server-side; the client only sees names and addresses.
   res.json({
-    host: VNC_HOST,
-    port: VNC_PORT,
+    targets: config.targets.map(({ name, host, port }) => ({
+      name,
+      host,
+      port,
+    })),
   });
 });
 
@@ -135,17 +153,25 @@ app.post("/api/app/display", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/app/session", (_req, res) => {
-  res.json({ active: hasActiveSession() });
-});
-
 app.post("/api/app/session", (req, res) => {
-  const force = !!(req.body as { force?: boolean } | undefined)?.force;
-  if (!force && hasActiveSession()) {
+  const body =
+    (req.body as
+      | { force?: boolean; target?: string; sessionId?: string }
+      | undefined) ?? {};
+  const target = config.targets.find((t) => t.name === body.target);
+  if (!target) {
+    res.status(400).json({ error: "unknown_target" });
+    return;
+  }
+  // A client that still holds the active session's id may reclaim (e.g. to
+  // reconnect or switch targets) without the takeover prompt.
+  const ownsActive =
+    typeof body.sessionId === "string" && validateSessionId(body.sessionId);
+  if (hasActiveSession() && !body.force && !ownsActive) {
     res.status(409).json({ error: "active_session" });
     return;
   }
-  const sessionId = claimSession(force);
+  const sessionId = claimSession(hasActiveSession(), target.name);
   res.json({ sessionId });
 });
 
@@ -196,11 +222,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`remotex ${VERSION} running on http://${HOST}:${PORT}`);
 });
 
-attachVncProxy(server, {
-  vncHost: VNC_HOST,
-  vncPort: VNC_PORT,
-  vncPassword: VNC_PASSWORD,
-});
+attachVncProxy(server, { targets: config.targets });
 
 const activeHttpSockets = new Set<Socket>();
 server.on("connection", (socket) => {

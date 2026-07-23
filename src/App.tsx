@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-import {
-  type ConnectionConfig,
-  parseConnectionConfig,
-} from "./connectionConfig";
+import { parseConnectionTargets, type VncTargetInfo } from "./connectionConfig";
 import { createRfbRemoteDesktopSession } from "./remoteDesktop/rfb/RfbRemoteDesktopSession";
 import { SoftKeyboardPanel } from "./SoftKeyboardPanel";
 import { useRemoteDesktop } from "./useRemoteDesktop";
@@ -33,7 +30,6 @@ const F11_KEYSYM = 0xffc8;
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
 const CLIPBOARD_NOTICE_DURATION_MS = 1800;
-const SESSION_CHECK_TIMEOUT_MS = 10000;
 
 const DESKTOP_BROWSER_BLOCKED_KEYS = [
   { label: "F5", keysyms: [F5_KEYSYM] },
@@ -97,8 +93,6 @@ interface FabDragState {
   dragged: boolean;
 }
 
-type ConnectionTarget = ConnectionConfig;
-
 interface ViewportState {
   width: number;
   height: number;
@@ -154,14 +148,16 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
-  const [connectionTarget, setConnectionTarget] =
-    useState<ConnectionTarget | null>(null);
+  const [targets, setTargets] = useState<VncTargetInfo[] | null>(null);
+  const [selectedTargetName, setSelectedTargetName] = useState<string | null>(
+    null,
+  );
   const [connectionTargetError, setConnectionTargetError] = useState<
     string | null
   >(null);
-  const [sessionPhase, setSessionPhase] = useState<
-    "checking" | "prompt" | "ready"
-  >("checking");
+  const [takeoverPending, setTakeoverPending] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [claimLoading, setClaimLoading] = useState(false);
   const sessionIdRef = useRef<string | null>(null);
   const [clipboardSendNotice, setClipboardSendNotice] = useState<string | null>(
     null,
@@ -226,12 +222,12 @@ export default function App() {
     };
   }, []);
 
-  // Load connection target details for manual connect UI.
+  // Load the configured VNC target profiles for the connect UI.
   useEffect(() => {
     if (authState !== "authenticated") return;
     let cancelled = false;
 
-    const loadConnectionTarget = async () => {
+    const loadTargets = async () => {
       try {
         const res = await fetch("/api/app/config");
         if (res.status === 401) {
@@ -239,114 +235,36 @@ export default function App() {
           return;
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const target = parseConnectionConfig(await res.json());
+        const loaded = parseConnectionTargets(await res.json());
 
         if (cancelled) return;
-        setConnectionTarget(target);
+        setTargets(loaded);
+        setSelectedTargetName((prev) =>
+          prev && loaded.some((t) => t.name === prev) ? prev : loaded[0].name,
+        );
         setConnectionTargetError(null);
       } catch (err) {
         if (cancelled) return;
-        console.error("Failed loading connection target:", err);
+        console.error("Failed loading connection targets:", err);
         setConnectionTargetError(
           err instanceof Error
             ? err.message
-            : "Unable to load connection target",
+            : "Unable to load connection targets",
         );
       }
     };
 
-    loadConnectionTarget();
+    loadTargets();
 
     return () => {
       cancelled = true;
     };
   }, [authState]);
 
-  // Session check after auth.
-  useEffect(() => {
-    if (authState !== "authenticated") return;
-    let cancelled = false;
-    const abort = new AbortController();
-    const timeout = setTimeout(() => {
-      if (cancelled) return;
-      abort.abort();
-      console.error("Session check timed out");
-      setSessionPhase("ready");
-    }, SESSION_CHECK_TIMEOUT_MS);
-
-    const checkSession = async () => {
-      try {
-        const statusRes = await fetch("/api/app/session", {
-          signal: abort.signal,
-        });
-        if (statusRes.status === 401) {
-          if (!cancelled) setAuthState("unauthenticated");
-          return;
-        }
-        if (cancelled) return;
-        if (!statusRes.ok) {
-          console.error("Session status check failed:", statusRes.status);
-          setSessionPhase("ready");
-          return;
-        }
-        const statusBody: unknown = await statusRes.json();
-        const active =
-          statusBody !== null &&
-          typeof statusBody === "object" &&
-          "active" in statusBody &&
-          typeof (statusBody as { active: unknown }).active === "boolean"
-            ? (statusBody as { active: boolean }).active
-            : false;
-
-        if (active) {
-          setSessionPhase("prompt");
-          return;
-        }
-
-        const claimRes = await fetch("/api/app/session", {
-          method: "POST",
-          signal: abort.signal,
-        });
-        if (cancelled) return;
-        if (claimRes.ok) {
-          const claimBody: unknown = await claimRes.json();
-          const sessionId =
-            claimBody !== null &&
-            typeof claimBody === "object" &&
-            "sessionId" in claimBody &&
-            typeof (claimBody as { sessionId: unknown }).sessionId === "string"
-              ? (claimBody as { sessionId: string }).sessionId
-              : null;
-          sessionIdRef.current = sessionId;
-          setSessionPhase("ready");
-        } else if (claimRes.status === 409) {
-          setSessionPhase("prompt");
-        } else {
-          console.error("Session claim failed:", claimRes.status);
-          setSessionPhase("ready");
-        }
-      } catch (err) {
-        if (!cancelled && !abort.signal.aborted) {
-          console.error("Session check error:", err);
-          setSessionPhase("ready");
-        }
-      } finally {
-        // The watchdog only guards a hung check; once it settled it must not
-        // fire later and silently overwrite the session phase (it would drop
-        // to "ready" without a claimed session, and connecting without a
-        // SESSION_ID is always rejected).
-        clearTimeout(timeout);
-      }
-    };
-
-    void checkSession();
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-      abort.abort();
-    };
-  }, [authState]);
+  const connectionTarget = useMemo(
+    () => targets?.find((t) => t.name === selectedTargetName) ?? null,
+    [targets, selectedTargetName],
+  );
 
   // Disconnect on unmount.
   useEffect(() => {
@@ -443,7 +361,7 @@ export default function App() {
   // Update document title based on connection state.
   useEffect(() => {
     if (state === "connected" && connectionTarget) {
-      document.title = `${connectionTarget.host}:${connectionTarget.port} — remotex`;
+      document.title = `${connectionTarget.name} (${connectionTarget.host}:${connectionTarget.port}) — remotex`;
     } else {
       document.title = "remotex";
     }
@@ -867,38 +785,69 @@ export default function App() {
     setToolbarOpen(false);
   }, []);
 
-  const handleTakeOverSession = useCallback(() => {
-    disconnect();
-    void (async () => {
-      try {
-        const res = await fetch("/api/app/session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ force: true }),
-        });
-        if (res.status === 401) {
-          setAuthState("unauthenticated");
-          return;
-        }
-        if (res.ok) {
+  // Claim the single session for the selected target, then connect. A 409
+  // means another client holds the session; the takeover prompt asks before
+  // reposting with force. Passing our own sessionId lets the server treat a
+  // reconnect/target switch from this client as a reclaim, not a takeover.
+  const claimSessionAndConnect = useCallback(
+    (force: boolean) => {
+      if (!selectedTargetName || claimLoading) return;
+      disconnect();
+      setClaimLoading(true);
+      setSessionError(null);
+      void (async () => {
+        try {
+          const res = await fetch("/api/app/session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              target: selectedTargetName,
+              force,
+              sessionId: sessionIdRef.current ?? undefined,
+            }),
+          });
+          if (res.status === 401) {
+            setAuthState("unauthenticated");
+            return;
+          }
+          if (res.status === 409) {
+            setTakeoverPending(true);
+            return;
+          }
+          if (!res.ok) {
+            console.error("Session claim failed:", res.status);
+            setSessionError(`Session claim failed (${res.status})`);
+            return;
+          }
           const { sessionId } = (await res.json()) as { sessionId: string };
           sessionIdRef.current = sessionId;
-        } else {
-          console.error("Session takeover failed:", res.status);
-          sessionIdRef.current = null;
+          setTakeoverPending(false);
+          connect({ sessionId });
+        } catch (err) {
+          console.error("Session claim error:", err);
+          setSessionError("Network error while claiming session");
+        } finally {
+          setClaimLoading(false);
         }
-      } catch (err) {
-        console.error("Session takeover error:", err);
-        sessionIdRef.current = null;
-      }
-      setSessionPhase("ready");
-    })();
-  }, [disconnect]);
+      })();
+    },
+    [selectedTargetName, claimLoading, disconnect, connect],
+  );
+
+  const handleTakeOverSession = useCallback(() => {
+    claimSessionAndConnect(true);
+  }, [claimSessionAndConnect]);
+
+  const handleCancelTakeover = useCallback(() => {
+    setTakeoverPending(false);
+  }, []);
 
   const handleLogout = useCallback(() => {
     disconnect();
     setToolbarOpen(false);
-    setSessionPhase("checking");
+    setTakeoverPending(false);
+    setSessionError(null);
+    sessionIdRef.current = null;
     void fetch("/api/auth/logout", { method: "POST" }).finally(() => {
       setAuthState("unauthenticated");
     });
@@ -935,19 +884,12 @@ export default function App() {
     [loginUsername, loginPassword, loginLoading],
   );
 
-  const handleConnect = useCallback(() => {
-    disconnect();
-    connect({
-      sessionId: sessionIdRef.current ?? undefined,
-    });
-  }, [disconnect, connect]);
-
   const handleConnectSubmit = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      handleConnect();
+      claimSessionAndConnect(false);
     },
-    [handleConnect],
+    [claimSessionAndConnect],
   );
 
   useEffect(() => {
@@ -1088,61 +1030,92 @@ export default function App() {
       )}
 
       {/* Connection overlay */}
-      {authState === "authenticated" &&
-        (sessionPhase !== "ready" || state !== "connected") && (
-          <div className="overlay">
-            {sessionPhase === "checking" && (
-              <div className="status">
-                <h1>remotex</h1>
-                <p>Checking session...</p>
-              </div>
-            )}
-            {sessionPhase === "prompt" && (
-              <div className="status">
-                <h1>remotex</h1>
-                <p>There is an active session.</p>
-                <p>Continuing will disconnect it.</p>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handleTakeOverSession}
+      {authState === "authenticated" && state !== "connected" && (
+        <div className="overlay">
+          {targets === null && (
+            <div className="status">
+              <h1>remotex</h1>
+              {connectionTargetError ? (
+                <p>Error: {connectionTargetError}</p>
+              ) : (
+                <p>Loading targets...</p>
+              )}
+            </div>
+          )}
+          {targets !== null && takeoverPending && (
+            <div className="status">
+              <h1>remotex</h1>
+              <p>There is an active session.</p>
+              <p>Continuing will disconnect it.</p>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleTakeOverSession}
+                disabled={claimLoading}
+              >
+                Continue
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleCancelTakeover}
+                disabled={claimLoading}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          {targets !== null && !takeoverPending && state === "connecting" && (
+            <div className="status">
+              <h1>remotex</h1>
+              <p>Connecting...</p>
+              {connectionTarget && (
+                <p>
+                  {`Target: ${connectionTarget.name} (vnc://${connectionTarget.host}:${connectionTarget.port})`}
+                </p>
+              )}
+            </div>
+          )}
+          {targets !== null && !takeoverPending && state !== "connecting" && (
+            <div className="status">
+              <h1>remotex</h1>
+              <p>
+                {state === "error" ? "Connection failed" : "Ready to connect"}
+              </p>
+              {state === "error" && error && <p>Error: {error}</p>}
+              {sessionError && <p>Error: {sessionError}</p>}
+              <form onSubmit={handleConnectSubmit}>
+                <label
+                  htmlFor="target-select"
+                  className="connect-password-label"
                 >
-                  Continue
+                  Target
+                </label>
+                <select
+                  id="target-select"
+                  className="target-select"
+                  value={selectedTargetName ?? ""}
+                  onChange={(e) => setSelectedTargetName(e.target.value)}
+                  disabled={claimLoading}
+                >
+                  {targets.map((t) => (
+                    <option key={t.name} value={t.name}>
+                      {`${t.name} — ${t.host}:${t.port}`}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  className="btn"
+                  disabled={claimLoading || !selectedTargetName}
+                >
+                  {claimLoading ? "Connecting..." : "Connect"}
                 </button>
-              </div>
-            )}
-            {sessionPhase === "ready" && state === "connecting" && (
-              <div className="status">
-                <h1>remotex</h1>
-                <p>Connecting...</p>
-                <p>
-                  {connectionTarget
-                    ? `Target: vnc://${connectionTarget.host}:${connectionTarget.port}`
-                    : connectionTargetError || "Target: loading..."}
-                </p>
-              </div>
-            )}
-            {sessionPhase === "ready" && state !== "connecting" && (
-              <div className="status">
-                <h1>remotex</h1>
-                <p>
-                  {state === "error" ? "Connection failed" : "Ready to connect"}
-                </p>
-                <p>
-                  {connectionTarget
-                    ? `Target: vnc://${connectionTarget.host}:${connectionTarget.port}`
-                    : connectionTargetError || "Target: loading..."}
-                </p>
-                {state === "error" && error && <p>Error: {error}</p>}
-                <form onSubmit={handleConnectSubmit}>
-                  <button type="submit" className="btn">
-                    Connect
-                  </button>
-                </form>
-              </div>
-            )}
-          </div>
-        )}
+              </form>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* FAB */}
       {state === "connected" && (

@@ -26,26 +26,26 @@ Express + ws (dumb WebSocket-to-TCP byte pipe, port 18890)
 TigerVNC (port 5901)
 ```
 
-Rendering, resize, and input all run in the browser; the server authenticates the WebSocket upgrade, performs the RFB security handshake with the VNC server (so `VNC_PASSWORD` never leaves the server), and then pipes bytes. No extra protocol daemon, no RDP.
+Rendering, resize, and input all run in the browser; the server authenticates the WebSocket upgrade, performs the RFB security handshake with the VNC server (so the target's VNC password never leaves the server), and then pipes bytes. No extra protocol daemon, no RDP.
 
 See [Architecture](docs/architecture.md) for the TypeScript boundaries and the
 extension path for another remote protocol such as SSH.
 
 ### VNC authentication
 
-The proxy handles the RFB security phase itself: it answers TigerVNC's VncAuth DES challenge with `VNC_PASSWORD` server-side, presents security type *None* to the browser, then splices the two byte streams. The VNC password is therefore never sent to the client and never appears in any client-visible response.
+The proxy handles the RFB security phase itself: it answers TigerVNC's VncAuth DES challenge with the selected target's `password` server-side, presents security type *None* to the browser, then splices the two byte streams. The VNC password is therefore never sent to the client and never appears in any client-visible response.
 
 ## Development
 
 ```bash
-cp .env.example .env   # edit connection settings as needed
+cp remotex.example.toml remotex.toml   # edit connection settings as needed
 bun install
 bun run dev            # start the dev server + Vite
 bun run check          # Biome + strict TypeScript
 bun test
 ```
 
-Open http://localhost:5173 — Vite proxies `/vnc/ws` and `/api` to the Express server on `REMOTEX_SERVER_PORT` (default `18890`).
+Open http://localhost:5173 — Vite proxies `/vnc/ws` and `/api` to the Express server on `[server].port` from `remotex.toml` (default `18890`).
 
 ## Install (prebuilt binary)
 
@@ -58,12 +58,11 @@ curl -fsSL https://andrewtheguy.github.io/remotex/install.sh | bash
 ```
 
 Installs to `~/.local/bin/remotex`. Supported platforms: Linux (amd64, arm64),
-macOS (arm64). The binary does **not** read a `.env` — pass config as real env
-vars:
+macOS (arm64). Config comes from a TOML file (see below):
 
 ```bash
-SITE_PASSWD=... VNC_HOST=127.0.0.1 VNC_PORT=5901 VNC_PASSWORD=... \
-  PORT=18890 HOST=127.0.0.1 remotex
+remotex                          # uses ./remotex.toml or ~/.config/remotex/config.toml
+remotex --config /path/to.toml   # explicit config file
 ```
 
 ## Build the binary yourself
@@ -80,28 +79,53 @@ bun run build
 bun run start
 ```
 
-Serves the built frontend from `dist/` on port 18890.
+Serves the built frontend from `dist/` on the configured port (default 18890).
 
-## Environment variables
+## Configuration
 
-| Variable | Default | Description |
-|---|---|---|
-| `SITE_PASSWD` | *(required)* | Base64-encoded `username:bcrypt_hash` (see below) |
-| `VNC_HOST` | `127.0.0.1` | VNC server hostname |
-| `VNC_PORT` | `5901` | VNC server port |
-| `VNC_PASSWORD` | | VNC server password (used server-side; never sent to the client) |
-| `REMOTEX_SERVER_PORT` | `18890` | Dev server listen port (also used by Vite proxy target) |
-| `PORT` | `18890` | Production server listen port override |
-| `HOST` | `127.0.0.1` | Server bind address |
+All config lives in a TOML file. The server looks for `./remotex.toml`, then
+`~/.config/remotex/config.toml`; `--config <path>` points at a specific file.
 
-`SITE_PASSWD` is required — the server will refuse to start without it. Generate a credential and add it to your `.env`:
+```toml
+[server]
+host = "127.0.0.1"      # listen address (optional)
+port = 18890            # listen port (optional)
+site_passwd = "..."     # base64 username:bcrypt_hash for the web login (required)
+
+# One or more VNC target profiles; the profile is chosen in the UI after login.
+[[targets]]
+name = "office"
+host = "10.0.0.1"
+port = 5900
+password = "..."        # used server-side only; never sent to the client
+
+[[targets]]
+name = "home"
+host = "10.0.0.2"
+port = 5901
+```
+
+See `remotex.example.toml` for a commented template. Multiple targets are just
+profiles to pick from — there is still only a single active session at a time.
+
+CLI options:
+
+```
+-c, --config <path>  TOML config file
+    --host <addr>    Listen address (overrides [server].host)
+-p, --port <port>    Listen port (overrides [server].port)
+-v, --version        Print version and exit
+-h, --help           Print this help and exit
+```
+
+`site_passwd` is required — the server will refuse to start without it. Generate a credential and paste it into your config:
 
 ```bash
 bun server/gen-htpasswd.ts admin
-# outputs: SITE_PASSWD=YWRtaW46JDJiJDEwJC4uLg==
+# outputs: YWRtaW46JDJiJDEwJC4uLg==
 ```
 
-The output is a ready-to-paste `.env` line (base64-encoded `username:bcrypt_hash`, no escaping needed).
+The output is the ready-to-paste `site_passwd` value (base64-encoded `username:bcrypt_hash`, no escaping needed).
 
 ## HiDPI (Mac desktop) — partial workaround
 

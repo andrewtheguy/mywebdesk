@@ -6,8 +6,7 @@
 > This project is still experimental: behavior may be unstable, features may change or be removed without notice, and updates may introduce regressions.
 
 Minimal, mobile-friendly VNC viewer with a typed remote-session architecture.
-Its RFB adapter uses a heavily pruned TypeScript fork of noVNC 1.7.0 while the
-React layer remains independent of noVNC APIs.
+Its RFB adapter.
 
 ## Features
 

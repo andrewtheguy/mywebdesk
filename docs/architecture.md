@@ -44,11 +44,6 @@ high-performance context check used by the renderer, and there is no Canvas 2D
 or WebGL1 fallback. A lost context fails the active RFB connection instead of
 silently switching renderers.
 
-The vendored RFB engine remains isolated because it is MPL-2.0 code with a
-traceable upstream origin. Unlike a conventional untyped vendor drop, its
-concrete TypeScript sources are included in both `tsc` and Biome checks. Local
-changes are recorded in `src/vendor/novnc/ORIGIN.md`.
-
 The server remains a deliberately protocol-light WebSocket-to-TCP pipe after
 the authentication handshake. Browser session ownership is kept in
 `server/session.ts`; transport code stays in `server/vncProxy.ts`.

@@ -6,18 +6,18 @@
  * See README.md for usage and integration instructions.
  */
 export const encodings = {
-    encodingRaw: 0,
-    encodingCopyRect: 1,
-    encodingTight: 7,
+  encodingRaw: 0,
+  encodingCopyRect: 1,
+  encodingTight: 7,
 
-    pseudoEncodingQualityLevel0: -32,
-    pseudoEncodingDesktopSize: -223,
-    pseudoEncodingLastRect: -224,
-    pseudoEncodingQEMUExtendedKeyEvent: -258,
-    pseudoEncodingDesktopName: -307,
-    pseudoEncodingExtendedDesktopSize: -308,
-    pseudoEncodingFence: -312,
-    pseudoEncodingContinuousUpdates: -313,
-    pseudoEncodingCompressLevel0: -256,
-    pseudoEncodingExtendedClipboard: 0xc0a1e5ce
+  pseudoEncodingQualityLevel0: -32,
+  pseudoEncodingDesktopSize: -223,
+  pseudoEncodingLastRect: -224,
+  pseudoEncodingQEMUExtendedKeyEvent: -258,
+  pseudoEncodingDesktopName: -307,
+  pseudoEncodingExtendedDesktopSize: -308,
+  pseudoEncodingFence: -312,
+  pseudoEncodingContinuousUpdates: -313,
+  pseudoEncodingCompressLevel0: -256,
+  pseudoEncodingExtendedClipboard: 0xc0a1e5ce,
 } as const;

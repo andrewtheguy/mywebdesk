@@ -5,7 +5,9 @@
 > No backward compatibility while it is still v0.0.x.
 > This project is still experimental: behavior may be unstable, features may change or be removed without notice, and updates may introduce regressions.
 
-Minimal, mobile-friendly VNC viewer using a vendored fork of noVNC 1.7.0 (`src/vendor/novnc`) for the RFB protocol with a custom UI.
+Minimal, mobile-friendly VNC viewer with a typed remote-session architecture.
+Its RFB adapter uses a heavily pruned TypeScript fork of noVNC 1.7.0 while the
+React layer remains independent of noVNC APIs.
 
 ## Features
 
@@ -17,7 +19,7 @@ Minimal, mobile-friendly VNC viewer using a vendored fork of noVNC 1.7.0 (`src/v
 ## Architecture
 
 ```
-Browser (Vite + React + vendored noVNC RFB client)
+Browser (React remote-session UI + RFB adapter)
     ↓ WebSocket (/vnc/ws, binary)
 Express + ws (dumb WebSocket-to-TCP byte pipe, port 18890)
     ↓ Raw TCP (RFB)
@@ -25,6 +27,9 @@ TigerVNC (port 5901)
 ```
 
 Rendering, resize, and input all run in the browser; the server authenticates the WebSocket upgrade, performs the RFB security handshake with the VNC server (so `VNC_PASSWORD` never leaves the server), and then pipes bytes. No extra protocol daemon, no RDP.
+
+See [Architecture](docs/architecture.md) for the TypeScript boundaries and the
+extension path for another remote protocol such as SSH.
 
 ### VNC authentication
 
@@ -36,6 +41,8 @@ The proxy handles the RFB security phase itself: it answers TigerVNC's VncAuth D
 cp .env.example .env   # edit connection settings as needed
 bun install
 bun run dev            # start the dev server + Vite
+bun run check          # Biome + strict TypeScript
+bun test
 ```
 
 Open http://localhost:5173 — Vite proxies `/vnc/ws` and `/api` to the Express server on `REMOTEX_SERVER_PORT` (default `18890`).
@@ -125,7 +132,7 @@ Touch devices (iPad/phone) keep 1× sizing and rely on pinch-zoom instead, same 
 
 ## Browser requirements
 
-Requires the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) (`crypto.subtle`) and a secure context (HTTPS or localhost) — noVNC also requires a secure context. The app will refuse to load on unsupported browsers.
+Requires the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) (`crypto.subtle`) and a secure context (HTTPS or localhost). The app will refuse to load on unsupported browsers.
 
 ## Install as an app (PWA)
 

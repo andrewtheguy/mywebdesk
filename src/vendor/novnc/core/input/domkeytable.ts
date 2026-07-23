@@ -18,23 +18,34 @@ type KeyLocationMap = [number, number, number, number];
 const DOMKeyTable: Record<string, KeyLocationMap> = {};
 
 function addStandard(key: string, standard: number | undefined) {
-    if (standard === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
-    if (key in DOMKeyTable) throw new Error("Duplicate entry for key \"" + key + "\"");
-    DOMKeyTable[key] = [standard, standard, standard, standard];
+  if (standard === undefined)
+    throw new Error(`Undefined keysym for key "${key}"`);
+  if (key in DOMKeyTable) throw new Error(`Duplicate entry for key "${key}"`);
+  DOMKeyTable[key] = [standard, standard, standard, standard];
 }
 
-function addLeftRight(key: string, left: number | undefined, right: number | undefined) {
-    if (left === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
-    if (right === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
-    if (key in DOMKeyTable) throw new Error("Duplicate entry for key \"" + key + "\"");
-    DOMKeyTable[key] = [left, left, right, left];
+function addLeftRight(
+  key: string,
+  left: number | undefined,
+  right: number | undefined,
+) {
+  if (left === undefined) throw new Error(`Undefined keysym for key "${key}"`);
+  if (right === undefined) throw new Error(`Undefined keysym for key "${key}"`);
+  if (key in DOMKeyTable) throw new Error(`Duplicate entry for key "${key}"`);
+  DOMKeyTable[key] = [left, left, right, left];
 }
 
-function addNumpad(key: string, standard: number | undefined, numpad: number | undefined) {
-    if (standard === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
-    if (numpad === undefined) throw new Error("Undefined keysym for key \"" + key + "\"");
-    if (key in DOMKeyTable) throw new Error("Duplicate entry for key \"" + key + "\"");
-    DOMKeyTable[key] = [standard, standard, standard, numpad];
+function addNumpad(
+  key: string,
+  standard: number | undefined,
+  numpad: number | undefined,
+) {
+  if (standard === undefined)
+    throw new Error(`Undefined keysym for key "${key}"`);
+  if (numpad === undefined)
+    throw new Error(`Undefined keysym for key "${key}"`);
+  if (key in DOMKeyTable) throw new Error(`Duplicate entry for key "${key}"`);
+  DOMKeyTable[key] = [standard, standard, standard, numpad];
 }
 
 // 3.2. Modifier Keys

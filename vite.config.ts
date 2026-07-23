@@ -14,13 +14,6 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   plugins: [react()],
-  resolve: {
-    alias: {
-      // Vendored fork of noVNC 1.7.0 (see src/vendor/novnc/ORIGIN.md). The
-      // alias keeps specifiers non-relative so src/novnc.d.ts can type them.
-      "@novnc-core": path.resolve(__dirname, "src/vendor/novnc/core"),
-    },
-  },
   server: {
     allowedHosts: [".trycloudflare.com"],
     proxy: {

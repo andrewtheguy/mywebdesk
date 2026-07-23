@@ -8,29 +8,44 @@
  */
 
 interface CopyRectSock {
-    rQwait(msg: string, num: number): boolean;
-    rQshift16(): number;
+  rQwait(msg: string, num: number): boolean;
+  rQshift16(): number;
 }
 
 interface CopyRectDisplay {
-    copyImage(oldX: number, oldY: number, newX: number, newY: number, width: number, height: number): void;
+  copyImage(
+    oldX: number,
+    oldY: number,
+    newX: number,
+    newY: number,
+    width: number,
+    height: number,
+  ): void;
 }
 
 export default class CopyRectDecoder {
-    decodeRect(x: number, y: number, width: number, height: number, sock: CopyRectSock, display: CopyRectDisplay, depth: number): boolean {
-        if (sock.rQwait("COPYRECT", 4)) {
-            return false;
-        }
-
-        let deltaX = sock.rQshift16();
-        let deltaY = sock.rQshift16();
-
-        if ((width === 0) || (height === 0)) {
-            return true;
-        }
-
-        display.copyImage(deltaX, deltaY, x, y, width, height);
-
-        return true;
+  decodeRect(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    sock: CopyRectSock,
+    display: CopyRectDisplay,
+    _depth: number,
+  ): boolean {
+    if (sock.rQwait("COPYRECT", 4)) {
+      return false;
     }
+
+    const deltaX = sock.rQshift16();
+    const deltaY = sock.rQshift16();
+
+    if (width === 0 || height === 0) {
+      return true;
+    }
+
+    display.copyImage(deltaX, deltaY, x, y, width, height);
+
+    return true;
+  }
 }

@@ -38,6 +38,17 @@ own input overlay and keeps the cursor rendered server-side):
     `_shouldShowDotCursor`, `_refreshCursor`, `showDotCursor`, `RFB.cursors`;
     `_sendEncodings` no longer advertises the cursor pseudo-encodings (the
     server keeps compositing the cursor into the framebuffer).
+  - Cursor pseudo-encoding later reinstated as a fresh implementation (the
+    deleted upstream `core/util/cursor.js`/`_updateCursor` path did NOT
+    return): macOS Screen Sharing never composites the pointer into the
+    framebuffer, so the Mac guest had no visible pointer. `core/encodings.ts`
+    regained `pseudoEncodingCursor` (-239), `_sendEncodings` advertises it,
+    and a new minimal `_handleCursor()` reads the RichCursor rect and
+    dispatches a `cursorchange` CustomEvent
+    (`{ cursor: RemoteCursorImage | null }`, null when the server hides the
+    pointer). Payload decoding lives in the first-party
+    `src/remoteDesktop/cursor.ts`; the app renders the shape as the input
+    overlay's CSS cursor, scaled to the current display scale.
 
 Further dead-for-this-app API removed from `core/rfb.js`:
 

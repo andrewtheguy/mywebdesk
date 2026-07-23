@@ -9,6 +9,7 @@ import type {
 const RFB_EVENT_NAMES = {
   clipboard: "clipboard",
   connect: "connect",
+  cursor: "cursorchange",
   disconnect: "disconnect",
   framebufferResize: "fbresize",
   securityFailure: "securityfailure",

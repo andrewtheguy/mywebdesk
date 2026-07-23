@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseConnectionConfig } from "./connectionConfig";
+import { cursorCssValue, type RemoteCursorImage } from "./remoteDesktop/cursor";
 import type {
   RemoteDesktopSession,
   RemoteDesktopSessionFactory,
@@ -265,6 +266,9 @@ export function useRemoteDesktop(
       let pendingTapTimer: ReturnType<typeof setTimeout> | null = null;
       let cursorPosition = { x: 0, y: 0 };
       let hasCursorPosition = false;
+      let remoteCursor: RemoteCursorImage | null = null;
+      let remoteCursorSerial = 0;
+      let appliedCursorKey = "";
       let touchMinimumSize: { width: number; height: number } | null = null;
       let pendingResizeTarget: { width: number; height: number } | null = null;
       let pendingResizeRetries = 0;
@@ -330,6 +334,26 @@ export function useRemoteDesktop(
         };
       }
 
+      // Render the server-provided pointer shape as the overlay's CSS
+      // cursor, scaled to match the framebuffer's on-screen size. Cheap to
+      // call repeatedly: the data URL is only regenerated when the cursor
+      // or its displayed size actually changes.
+      function applyOverlayCursor(): void {
+        if (!remoteCursor) {
+          if (appliedCursorKey !== "") {
+            appliedCursorKey = "";
+            overlayEl.style.cursor = "none";
+          }
+          return;
+        }
+        const scale = Math.max(0.0001, fitScale * zoomScale);
+        const cssWidth = Math.max(1, Math.round(remoteCursor.width * scale));
+        const key = `${remoteCursorSerial}:${cssWidth}`;
+        if (key === appliedCursorKey) return;
+        appliedCursorKey = key;
+        overlayEl.style.cursor = cursorCssValue(remoteCursor, scale);
+      }
+
       function applyDisplayTransform(
         nextZoomScale = zoomScale,
         nextPan = panOffset,
@@ -364,6 +388,7 @@ export function useRemoteDesktop(
           canvasEl.style.transform = "";
           overlayEl.style.width = `${displayWidth * scale}px`;
           overlayEl.style.height = `${displayHeight * scale}px`;
+          applyOverlayCursor();
           return;
         }
 
@@ -375,6 +400,7 @@ export function useRemoteDesktop(
         session.setDisplayScale(effectiveScale);
         panOffset = clampPanToBounds(nextPan.x, nextPan.y, effectiveScale);
         canvasEl.style.transform = `translate3d(${panOffset.x}px, ${panOffset.y}px, 0)`;
+        applyOverlayCursor();
       }
 
       function getTouchDistance(first: Touch, second: Touch): number {
@@ -1359,6 +1385,11 @@ export function useRemoteDesktop(
       }
       const removeSessionListeners = [
         session.on("framebufferResize", handleFramebufferResize),
+        session.on("cursor", ({ cursor }) => {
+          remoteCursor = cursor;
+          remoteCursorSerial += 1;
+          applyOverlayCursor();
+        }),
       ];
 
       window.addEventListener("resize", scheduleResize);

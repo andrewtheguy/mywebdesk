@@ -11,6 +11,7 @@ export const encodings = {
   encodingTight: 7,
 
   pseudoEncodingQualityLevel0: -32,
+  pseudoEncodingCursor: -239,
   pseudoEncodingDesktopSize: -223,
   pseudoEncodingLastRect: -224,
   pseudoEncodingQEMUExtendedKeyEvent: -258,

@@ -7,6 +7,7 @@
  *
  */
 
+import { decodeCursorRect } from "../../../remoteDesktop/cursor";
 import CopyRectDecoder from "./decoders/copyrect";
 import RawDecoder from "./decoders/raw";
 import TightDecoder from "./decoders/tight";
@@ -1148,10 +1149,11 @@ export default class RFB extends EventTarget {
     encs.push(encodings.pseudoEncodingDesktopName);
     encs.push(encodings.pseudoEncodingExtendedClipboard);
 
-    // The cursor pseudo-encodings are deliberately never advertised:
-    // they would make the server stop drawing the cursor into the
-    // framebuffer, and this client renders no local cursor (the app's
-    // input overlay sits above the canvas).
+    // The classic Cursor (RichCursor) pseudo-encoding is required for
+    // servers that never composite the pointer into the framebuffer
+    // (macOS Screen Sharing). The decoded shape is handed to the app via
+    // the "cursorchange" event; the app renders it on its input overlay.
+    encs.push(encodings.pseudoEncodingCursor);
 
     RFB.messages.clientEncodings(this._sock, encs);
   }
@@ -1545,9 +1547,41 @@ export default class RFB extends EventTarget {
       case encodings.pseudoEncodingExtendedDesktopSize:
         return this._handleExtendedDesktopSize();
 
+      case encodings.pseudoEncodingCursor:
+        return this._handleCursor();
+
       default:
         return this._handleDataRect();
     }
+  }
+
+  _handleCursor(): boolean {
+    const width = this._FBU.width;
+    const height = this._FBU.height;
+    const pixelsLength = width * height * 4;
+    const maskLength = Math.ceil(width / 8) * height;
+
+    if (this._sock.rQwait("cursor", pixelsLength + maskLength)) {
+      return false;
+    }
+
+    const pixels = this._sock.rQshiftBytes(pixelsLength);
+    const mask = this._sock.rQshiftBytes(maskLength);
+    this.dispatchEvent(
+      new CustomEvent("cursorchange", {
+        detail: {
+          cursor: decodeCursorRect(
+            width,
+            height,
+            this._FBU.x,
+            this._FBU.y,
+            pixels,
+            mask,
+          ),
+        },
+      }),
+    );
+    return true;
   }
 
   _handleDesktopName() {

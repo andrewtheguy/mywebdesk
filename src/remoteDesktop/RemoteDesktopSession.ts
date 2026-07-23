@@ -1,8 +1,11 @@
 import type { DisplaySize } from "../resizeSizing";
+import type { RemoteCursorImage } from "./cursor";
 
 export interface RemoteDesktopEventMap {
   clipboard: { text: string };
   connect: Record<string, never>;
+  // The server-provided pointer shape; null when the server hides it.
+  cursor: { cursor: RemoteCursorImage | null };
   disconnect: { clean: boolean };
   framebufferResize: DisplaySize;
   securityFailure: { status: number; reason?: string };

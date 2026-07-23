@@ -34,7 +34,7 @@ const RESIZE_REQUEST_DEBOUNCE_MS = 250;
 // Tight encoding quality/compression advertised to the server. Quality is
 // user-adjustable at runtime via the `qualityLevel` accessor; compression
 // stays fixed.
-const DEFAULT_QUALITY_LEVEL = 6;
+const DEFAULT_QUALITY_LEVEL = 9;
 const COMPRESSION_LEVEL = 2;
 
 // Security types (only None is supported; the proxy in front of this

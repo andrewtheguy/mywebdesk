@@ -36,8 +36,8 @@ const CLIPBOARD_NOTICE_DURATION_MS = 1800;
 // quality is honored depends on the server; TigerVNC-style servers apply it.
 const PICTURE_QUALITY_STORAGE_KEY = "remotex-picture-quality";
 const PICTURE_QUALITY_PRESETS = [
-  { label: "High", level: 9 },
-  { label: "Balanced", level: DEFAULT_PICTURE_QUALITY },
+  { label: "High", level: DEFAULT_PICTURE_QUALITY },
+  { label: "Balanced", level: 6 },
   { label: "Low", level: 3 },
   { label: "Lowest", level: 0 },
 ] as const;

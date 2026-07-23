@@ -22,7 +22,7 @@ export type RemoteDesktopSessionFactory = (
 // honors it depends on the protocol/server (RFB: Tight JPEG quality).
 export const PICTURE_QUALITY_MIN = 0;
 export const PICTURE_QUALITY_MAX = 9;
-export const DEFAULT_PICTURE_QUALITY = 6;
+export const DEFAULT_PICTURE_QUALITY = 9;
 
 export interface RemoteDesktopSession {
   readonly canvasElement: HTMLCanvasElement;

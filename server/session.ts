@@ -1,13 +1,14 @@
 import type { WebSocket } from "ws";
 
 let activeSessionId: string | null = null;
+let activeTargetName: string | null = null;
 const sessionWebSockets = new Set<WebSocket>();
 
 export function hasActiveSession(): boolean {
   return activeSessionId !== null;
 }
 
-export function claimSession(force: boolean): string {
+export function claimSession(force: boolean, targetName: string): string {
   if (activeSessionId !== null) {
     if (!force) {
       throw new Error("A session is already active");
@@ -15,7 +16,12 @@ export function claimSession(force: boolean): string {
     evictSession();
   }
   activeSessionId = crypto.randomUUID();
+  activeTargetName = targetName;
   return activeSessionId;
+}
+
+export function getActiveTargetName(): string | null {
+  return activeTargetName;
 }
 
 export function validateSessionId(id: string): boolean {
@@ -44,4 +50,5 @@ export function evictSession(): void {
   }
   sessionWebSockets.clear();
   activeSessionId = null;
+  activeTargetName = null;
 }

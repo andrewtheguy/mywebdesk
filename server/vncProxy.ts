@@ -2,18 +2,21 @@ import type { Server } from "node:http";
 import net from "node:net";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getSessionTokenFromCookieHeader, isValidSession } from "./auth.js";
+import type { VncTarget } from "./config.js";
 import {
   createByteReader,
   HandshakeError,
   performClientHandshake,
   performServerHandshake,
 } from "./rfbHandshake.js";
-import { registerSessionWebSocket, validateSessionId } from "./session.js";
+import {
+  getActiveTargetName,
+  registerSessionWebSocket,
+  validateSessionId,
+} from "./session.js";
 
 interface VncProxyOptions {
-  vncHost: string;
-  vncPort: number;
-  vncPassword: string;
+  targets: VncTarget[];
 }
 
 const activeSockets = new Set<net.Socket>();
@@ -63,12 +66,21 @@ export function attachVncProxy(
   });
 
   wss.on("connection", (ws: WebSocket) => {
+    // The session claim recorded which target profile this session dials.
+    const target = options.targets.find(
+      (t) => t.name === getActiveTargetName(),
+    );
+    if (!target) {
+      ws.close(1011, "no-target");
+      return;
+    }
+
     activeWebSockets.add(ws);
     registerSessionWebSocket(ws);
 
     const tcp = net.createConnection({
-      host: options.vncHost,
-      port: options.vncPort,
+      host: target.host,
+      port: target.port,
     });
     tcp.setNoDelay(true);
     activeSockets.add(tcp);
@@ -80,7 +92,7 @@ export function attachVncProxy(
     // idle when nothing on the remote screen changes.
     const handshakeTimer = setTimeout(() => {
       console.error(
-        `VNC handshake timed out (${options.vncHost}:${options.vncPort})`,
+        `VNC handshake timed out (${target.name}: ${target.host}:${target.port})`,
       );
       tcp.destroy();
       if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
@@ -119,7 +131,7 @@ export function attachVncProxy(
         (data) => {
           if (!tcp.destroyed) tcp.write(data);
         },
-        options.vncPassword,
+        target.password,
       ),
       performClientHandshake(wsReader, (data) => {
         if (ws.readyState === ws.OPEN) ws.send(data);

@@ -13,9 +13,8 @@ await $`bun run scripts/gen-embedded-assets.ts`;
 
 // 2. Compile the server + embedded assets into a standalone executable.
 //    NODE_ENV is baked so the binary always serves the embedded frontend.
-//    --no-compile-autoload-dotenv keeps the build-time .env out of the binary and
-//    stops the binary from auto-loading a .env at runtime; config is via real env
-//    vars only.
+//    --no-compile-autoload-dotenv stops the binary from auto-loading a .env at
+//    runtime; config comes from the TOML config file (see server/config.ts).
 const proc = Bun.spawn(
   [
     "bun",

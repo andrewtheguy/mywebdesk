@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { parseConnectionConfig } from "./connectionConfig";
+import { parseConnectionTargets } from "./connectionConfig";
 import { cursorCssValue, type RemoteCursorImage } from "./remoteDesktop/cursor";
 import type {
   RemoteDesktopSession,
@@ -143,7 +143,7 @@ export function useRemoteDesktop(
           setState("error");
           return;
         }
-        parseConnectionConfig(await res.json());
+        parseConnectionTargets(await res.json());
       } catch (err) {
         if (connectionId !== connectionIdRef.current) return;
         setError(
@@ -180,7 +180,7 @@ export function useRemoteDesktop(
           setError("Unable to reach the configured VNC target");
         } else if (event.reason === "vnc-handshake-failed") {
           setError(
-            "VNC handshake failed on the server (check VNC_PASSWORD and the server log)",
+            "VNC handshake failed on the server (check the target's password in the config and the server log)",
           );
         }
       });

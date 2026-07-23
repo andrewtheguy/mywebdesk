@@ -3,9 +3,7 @@ dist
 bin
 server/embeddedAssets.generated.ts
 *.log
-.env
-.env.local
-.env.*.local
+remotex.toml
 .DS_Store
 *.sw?
 package-lock.json

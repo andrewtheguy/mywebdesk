@@ -1209,6 +1209,11 @@ export function useRemoteDesktop(
       function handleWheel(e: WheelEvent) {
         const { x, y } = remoteCoordsFromClient(e.clientX, e.clientY);
         sendWheelFromRemote(x, y, e.deltaY < 0, e.deltaY > 0);
+        if (e.deltaX < 0) {
+          sendHorizontalScrollTick("left");
+        } else if (e.deltaX > 0) {
+          sendHorizontalScrollTick("right");
+        }
         e.preventDefault();
       }
 

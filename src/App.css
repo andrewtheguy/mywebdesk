@@ -20,6 +20,38 @@
   transform-origin: top left;
 }
 
+/* Desktop scroll mode: the remote framebuffer can be larger than the
+   viewport when the server can't resize (e.g. macOS Screen Sharing).
+   Force always-visible scrollbars — macOS overlay scrollbars would be
+   invisible since wheel events are forwarded to the remote machine. */
+.remote-screen {
+  scrollbar-width: auto;
+  scrollbar-color: #666 #111;
+}
+
+.remote-screen::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.remote-screen::-webkit-scrollbar-track {
+  background: #111;
+}
+
+.remote-screen::-webkit-scrollbar-thumb {
+  background: #666;
+  border-radius: 6px;
+  border: 2px solid #111;
+}
+
+.remote-screen::-webkit-scrollbar-thumb:hover {
+  background: #888;
+}
+
+.remote-screen::-webkit-scrollbar-corner {
+  background: #111;
+}
+
 .hidden-input {
   position: absolute;
   top: -9999px;

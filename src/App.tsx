@@ -330,6 +330,12 @@ export default function App() {
           console.error("Session check error:", err);
           setSessionPhase("ready");
         }
+      } finally {
+        // The watchdog only guards a hung check; once it settled it must not
+        // fire later and silently overwrite the session phase (it would drop
+        // to "ready" without a claimed session, and connecting without a
+        // SESSION_ID is always rejected).
+        clearTimeout(timeout);
       }
     };
 

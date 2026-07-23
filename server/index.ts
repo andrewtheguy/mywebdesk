@@ -9,7 +9,6 @@ import {
   isValidSession,
   verifyCredentials,
 } from "./auth.js";
-import { displayResizeEnabled, requestDisplayResize } from "./displayResize.js";
 import { claimSession, hasActiveSession } from "./session.js";
 import { attachVncProxy, closeAll } from "./vncProxy.js";
 
@@ -108,25 +107,7 @@ app.get("/api/app/config", (_req, res) => {
   res.json({
     host: VNC_HOST,
     port: VNC_PORT,
-    remoteResize: displayResizeEnabled,
   });
-});
-
-// Out-of-band resize for servers without RFB SetDesktopSize support: the
-// client posts its viewport target and the server switches the remote
-// display mode over SSH (see displayResize.ts).
-app.post("/api/app/resize", (req, res) => {
-  if (!displayResizeEnabled) {
-    res.status(501).json({ error: "resize_not_configured" });
-    return;
-  }
-  const { width, height } =
-    (req.body as { width?: number; height?: number } | undefined) ?? {};
-  if (!requestDisplayResize(width, height)) {
-    res.status(400).json({ error: "invalid_dimensions" });
-    return;
-  }
-  res.json({ ok: true });
 });
 
 // The proxy is a dumb byte pipe, so the display size is reported by the

@@ -1,9 +1,6 @@
 export interface ConnectionConfig {
   host: string;
   port: string;
-  // Server can resize the remote display out-of-band (SSH) for VNC servers
-  // without SetDesktopSize support.
-  remoteResize: boolean;
 }
 
 // Validates the /api/app/config response shape; throws with a clear message
@@ -14,10 +11,9 @@ export function parseConnectionConfig(payload: unknown): ConnectionConfig {
     throw new Error("Invalid config response: expected object payload");
   }
 
-  const { host, port, remoteResize } = payload as {
+  const { host, port } = payload as {
     host?: unknown;
     port?: unknown;
-    remoteResize?: unknown;
   };
 
   if (typeof host !== "string" || host.trim().length === 0) {
@@ -40,6 +36,5 @@ export function parseConnectionConfig(payload: unknown): ConnectionConfig {
   return {
     host: host.trim(),
     port: normalizedPort,
-    remoteResize: remoteResize === true,
   };
 }

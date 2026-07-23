@@ -129,7 +129,6 @@ export function useRemoteDesktop(
 
       // Pre-flight: verify auth and config shape before opening the tunnel.
       // The proxy holds the VNC target and password server-side.
-      let remoteResize = false;
       try {
         const res = await fetch("/api/app/config");
         if (!res.ok) {
@@ -143,7 +142,7 @@ export function useRemoteDesktop(
           setState("error");
           return;
         }
-        remoteResize = parseConnectionConfig(await res.json()).remoteResize;
+        parseConnectionConfig(await res.json());
       } catch (err) {
         if (connectionId !== connectionIdRef.current) return;
         setError(
@@ -1292,16 +1291,6 @@ export function useRemoteDesktop(
         pendingResizeRetries = 0;
 
         session.requestResize();
-        // Servers without SetDesktopSize support (macOS Screen Sharing) are
-        // resized out-of-band: the remotex server switches the remote display
-        // mode over SSH and the new size arrives as a normal VNC resize.
-        if (remoteResize) {
-          void fetch("/api/app/resize", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ width: w, height: h }),
-          }).catch(() => {});
-        }
         queueResizeRetry();
       }
 

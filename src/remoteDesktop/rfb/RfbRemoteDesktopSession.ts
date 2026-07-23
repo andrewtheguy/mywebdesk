@@ -83,6 +83,10 @@ export class RfbRemoteDesktopSession implements RemoteDesktopSession {
     this.#rfb.setBaseScale(scale);
   }
 
+  setPictureQuality(level: number): void {
+    this.#rfb.qualityLevel = level;
+  }
+
   setResizeEnabled(enabled: boolean): void {
     this.#rfb.resizeSession = enabled;
   }

@@ -5,9 +5,10 @@ import {
   FALLBACK_CURSOR,
   type RemoteCursorImage,
 } from "./remoteDesktop/cursor";
-import type {
-  RemoteDesktopSession,
-  RemoteDesktopSessionFactory,
+import {
+  DEFAULT_PICTURE_QUALITY,
+  type RemoteDesktopSession,
+  type RemoteDesktopSessionFactory,
 } from "./remoteDesktop/RemoteDesktopSession";
 import { computeResizeTarget } from "./resizeSizing";
 import { type MouseButtonState, toRfbButtonMask } from "./rfbInput";
@@ -107,6 +108,7 @@ export function useRemoteDesktop(
   const [error, setError] = useState<string | null>(null);
   const [clipboardText, setClipboardText] = useState("");
   const resizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pictureQualityRef = useRef(DEFAULT_PICTURE_QUALITY);
 
   const connect = useCallback(
     async (options?: ConnectOptions) => {
@@ -234,6 +236,9 @@ export function useRemoteDesktop(
         return;
       }
       sessionRef.current = session;
+      // Applied before the protocol handshake advertises encodings, so the
+      // first framebuffer updates already use the selected quality.
+      session.setPictureQuality(pictureQualityRef.current);
 
       const screenEl = session.screenElement;
       const canvasEl = session.canvasElement;
@@ -1579,6 +1584,11 @@ export function useRemoteDesktop(
     sessionRef.current?.sendKey(keysym, null, pressed);
   }, []);
 
+  const setPictureQuality = useCallback((level: number) => {
+    pictureQualityRef.current = level;
+    sessionRef.current?.setPictureQuality(level);
+  }, []);
+
   const sendKeyCombo = useCallback((keysyms: number[]) => {
     const session = sessionRef.current;
     if (!session) return;
@@ -1600,6 +1610,7 @@ export function useRemoteDesktop(
     sendClipboard,
     sendKey,
     sendKeyCombo,
+    setPictureQuality,
     state,
     error,
     clipboardText,

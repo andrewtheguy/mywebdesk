@@ -50,7 +50,7 @@ if args.count == 2 && args[1] == "list" {
 }
 
 if args.count == 4 && args[1] == "set", let width = Int(args[2]),
-  let height = Int(args[3])
+  let height = Int(args[3]), width > 0, height > 0
 {
   let usable = allModes.filter { $0.isUsableForDesktopGUI() }
   guard !usable.isEmpty else {

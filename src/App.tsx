@@ -4,8 +4,9 @@ import {
   type ConnectionConfig,
   parseConnectionConfig,
 } from "./connectionConfig";
+import { createRfbRemoteDesktopSession } from "./remoteDesktop/rfb/RfbRemoteDesktopSession";
 import { SoftKeyboardPanel } from "./SoftKeyboardPanel";
-import { useVnc } from "./useVnc";
+import { useRemoteDesktop } from "./useRemoteDesktop";
 
 const FAB_SIZE = 36;
 const FAB_COMBO_WIDTH = 80;
@@ -135,7 +136,7 @@ export default function App() {
     state,
     error,
     clipboardText,
-  } = useVnc(containerRef);
+  } = useRemoteDesktop(containerRef, createRfbRemoteDesktopSession);
 
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [clipboardInput, setClipboardInput] = useState("");

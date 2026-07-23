@@ -1,21 +1,23 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "Preserve",
     "moduleResolution": "bundler",
+    "moduleDetection": "force",
     "jsx": "react-jsx",
     "strict": true,
+    "types": ["bun"],
+    "verbatimModuleSyntax": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "allowUnreachableCode": false,
-    "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src", "server"],
+  "include": ["src", "server", "scripts", "vite.config.ts"],
   "exclude": ["server/embeddedAssets.generated.ts"]
 }

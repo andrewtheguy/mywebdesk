@@ -12,11 +12,9 @@
  * was dead code).
  */
 
-/* eslint-disable no-console */
 type LogFunction = (...args: unknown[]) => void;
 
 export const Debug: LogFunction = () => {};
 export const Info: LogFunction = () => {};
 export const Warn = console.warn.bind(console);
-export const Error = console.error.bind(console);
-/* eslint-enable no-console */
+export const ErrorLog = console.error.bind(console);

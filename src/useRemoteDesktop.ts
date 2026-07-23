@@ -1,7 +1,9 @@
-import Keyboard from "@novnc-core/input/keyboard";
-import RFB from "@novnc-core/rfb";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseConnectionConfig } from "./connectionConfig";
+import type {
+  RemoteDesktopSession,
+  RemoteDesktopSessionFactory,
+} from "./remoteDesktop/RemoteDesktopSession";
 import { computeResizeTarget } from "./resizeSizing";
 import { type MouseButtonState, toRfbButtonMask } from "./rfbInput";
 
@@ -88,10 +90,11 @@ interface ThreeFingerScrollGesture {
   carryY: number;
 }
 
-export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
-  const rfbRef = useRef<RFB | null>(null);
-  const keyboardRef = useRef<Keyboard | null>(null);
-  const keyboardTargetRef = useRef<HTMLElement | Document | null>(null);
+export function useRemoteDesktop(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  createSession: RemoteDesktopSessionFactory,
+) {
+  const sessionRef = useRef<RemoteDesktopSession | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const connectionIdRef = useRef(0);
   const manualDisconnectRef = useRef(false);
@@ -112,13 +115,13 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       // Tear down any previous connection's DOM/listeners first.
       cleanupRef.current?.();
       cleanupRef.current = null;
-      if (rfbRef.current) {
+      if (sessionRef.current) {
         try {
-          rfbRef.current.disconnect();
+          sessionRef.current.disconnect();
         } catch {
           // Already torn down.
         }
-        rfbRef.current = null;
+        sessionRef.current = null;
       }
 
       setState("connecting");
@@ -181,7 +184,7 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         }
       });
 
-      // Mount point for noVNC's screen/canvas plus our input overlay on top.
+      // Mount point for the protocol renderer plus our input overlay on top.
       // The fork has no input handlers of its own; all input is synthesized
       // here and sent via sendKey()/sendPointer().
       containerEl.style.position = "relative";
@@ -195,12 +198,24 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       // No credentials: the server-side proxy answers the VNC auth challenge
       // itself and presents security type None to the browser, so the VNC
       // password never reaches the client.
-      const rfb = new RFB(containerEl, ws);
-      rfbRef.current = rfb;
+      let session: RemoteDesktopSession;
+      try {
+        session = createSession(containerEl, ws);
+      } catch (cause) {
+        ws.close(1000, "renderer-unavailable");
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Failed to initialize the remote desktop renderer",
+        );
+        setState("error");
+        return;
+      }
+      sessionRef.current = session;
       containerEl.appendChild(overlayEl);
 
-      const screenEl = rfb.screenElement;
-      const canvasEl = rfb.canvasElement;
+      const screenEl = session.screenElement;
+      const canvasEl = session.canvasElement;
       screenEl.style.overflow = "hidden";
       canvasEl.style.margin = "0";
       canvasEl.style.transformOrigin = "0 0";
@@ -209,15 +224,15 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       let canSendResize = false;
 
       function getRemoteWidth(): number {
-        return rfb.fbSize.width;
+        return session.framebufferSize.width;
       }
 
       function getRemoteHeight(): number {
-        return rfb.fbSize.height;
+        return session.framebufferSize.height;
       }
 
       function sendMouse(x: number, y: number, state: MouseButtonState): void {
-        rfb.sendPointer(x, y, toRfbButtonMask(state));
+        session.sendPointer(x, y, toRfbButtonMask(state));
       }
 
       let fitScale = 1;
@@ -275,10 +290,10 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         });
       }
 
-      // noVNC reads this whenever it decides to request a remote resize
-      // (our doResize pokes, plus its own container ResizeObserver).
-      rfb.computeTargetSize = () => computeSessionSizeTarget();
-      rfb.resizeSession = true;
+      // Keep one sizing source so every protocol resize path uses device
+      // pixels consistently.
+      session.setTargetSizeProvider(() => computeSessionSizeTarget());
+      session.setResizeEnabled(true);
 
       function clampPanToBounds(
         x: number,
@@ -311,7 +326,7 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         zoomScale = clampValue(nextZoomScale, MIN_ZOOM, MAX_ZOOM);
         const effectiveScale = fitScale * zoomScale;
 
-        rfb.setBaseScale(effectiveScale);
+        session.setDisplayScale(effectiveScale);
         panOffset = clampPanToBounds(nextPan.x, nextPan.y, effectiveScale);
         canvasEl.style.transform = `translate3d(${panOffset.x}px, ${panOffset.y}px, 0)`;
       }
@@ -530,12 +545,12 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       function sendHorizontalScrollTick(direction: "left" | "right"): void {
         // RFB has native horizontal wheel buttons (6/7), so send them directly.
         const cursor = getCurrentCursorPosition();
-        rfb.sendPointer(
+        session.sendPointer(
           cursor.x,
           cursor.y,
           direction === "left" ? MASK_WHEEL_LEFT : MASK_WHEEL_RIGHT,
         );
-        rfb.sendPointer(cursor.x, cursor.y, MASK_NONE);
+        session.sendPointer(cursor.x, cursor.y, MASK_NONE);
       }
 
       function handleThreeFingerScrollMove(touches: TouchList): boolean {
@@ -1194,6 +1209,11 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       function handleWheel(e: WheelEvent) {
         const { x, y } = remoteCoordsFromClient(e.clientX, e.clientY);
         sendWheelFromRemote(x, y, e.deltaY < 0, e.deltaY > 0);
+        if (e.deltaX < 0) {
+          sendHorizontalScrollTick("left");
+        } else if (e.deltaX > 0) {
+          sendHorizontalScrollTick("right");
+        }
         e.preventDefault();
       }
 
@@ -1202,8 +1222,8 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       }
 
       // Resize the remote desktop to the viewport size (in device pixels for
-      // HiDPI). noVNC pulls the actual target from rfb.computeTargetSize when
-      // we poke requestResize(). Compare against the real framebuffer — not
+      // HiDPI). The session reads the target provider when requestResize()
+      // runs. Compare against the real framebuffer — not
       // the last request — so a request that never landed can't permanently
       // swallow future resizes to the same target.
       function doResize() {
@@ -1220,7 +1240,7 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         pendingResizeTarget = { width: w, height: h };
         pendingResizeRetries = 0;
 
-        rfb.requestResize();
+        session.requestResize();
         queueResizeRetry();
       }
 
@@ -1254,16 +1274,19 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
           }
 
           pendingResizeRetries += 1;
-          rfb.requestResize();
+          session.requestResize();
           queueResizeRetry();
         }, RESIZE_RETRY_DELAY_MS);
       }
 
       // Framebuffer size changes (server applied a resize, or initial size).
-      function handleFbResize(event: Event) {
-        const { width, height } = (
-          event as CustomEvent<{ width: number; height: number }>
-        ).detail;
+      function handleFramebufferResize({
+        width,
+        height,
+      }: {
+        width: number;
+        height: number;
+      }): void {
         if (!useHiDpiSessionSizing && !touchMinimumSize) {
           touchMinimumSize = { width, height };
         }
@@ -1284,7 +1307,9 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
           body: JSON.stringify({ width, height }),
         }).catch(() => {});
       }
-      rfb.addEventListener("fbresize", handleFbResize);
+      const removeSessionListeners = [
+        session.on("framebufferResize", handleFramebufferResize),
+      ];
 
       window.addEventListener("resize", scheduleResize);
       window.addEventListener("orientationchange", scheduleResize);
@@ -1310,64 +1335,49 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
       }
       if (useHiDpiSessionSizing) watchDprChanges();
 
-      // RFB lifecycle events
-      rfb.addEventListener("connect", () => {
-        if (connectionId !== connectionIdRef.current) return;
-        setState("connected");
-        canSendResize = true;
-        doResize();
-        scheduleResize();
-      });
+      removeSessionListeners.push(
+        session.on("connect", () => {
+          if (connectionId !== connectionIdRef.current) return;
+          setState("connected");
+          canSendResize = true;
+          doResize();
+          scheduleResize();
+        }),
+        session.on("disconnect", ({ clean }) => {
+          if (connectionId !== connectionIdRef.current) return;
+          canSendResize = false;
+          if (manualDisconnectRef.current) {
+            setState("disconnected");
+            return;
+          }
+          setError(
+            (prev) =>
+              prev ||
+              (clean
+                ? "Disconnected by the server"
+                : "Connection closed unexpectedly"),
+          );
+          setState("error");
+        }),
+        session.on("securityFailure", ({ reason }) => {
+          if (connectionId !== connectionIdRef.current) return;
+          setError(
+            reason
+              ? `VNC authentication failed: ${reason}`
+              : "VNC authentication failed",
+          );
+        }),
+        session.on("clipboard", ({ text }) => {
+          if (connectionId !== connectionIdRef.current) return;
+          setClipboardText(text);
+        }),
+      );
 
-      rfb.addEventListener("disconnect", (event) => {
-        if (connectionId !== connectionIdRef.current) return;
-        canSendResize = false;
-        if (manualDisconnectRef.current) {
-          setState("disconnected");
-          return;
-        }
-        const clean = event.detail.clean;
-        setError(
-          (prev) =>
-            prev ||
-            (clean
-              ? "Disconnected by the server"
-              : "Connection closed unexpectedly"),
-        );
-        setState("error");
-      });
-
-      rfb.addEventListener("securityfailure", (event) => {
-        if (connectionId !== connectionIdRef.current) return;
-        const reason = event.detail.reason;
-        setError(
-          reason
-            ? `VNC authentication failed: ${reason}`
-            : "VNC authentication failed",
-        );
-      });
-
-      // Clipboard from remote (noVNC handles the extended/Unicode transport)
-      rfb.addEventListener("clipboard", (event) => {
-        if (connectionId !== connectionIdRef.current) return;
-        setClipboardText(event.detail.text);
-      });
-
-      // Keyboard: reuse one noVNC Keyboard per container; the handler routes
-      // through rfbRef so it goes inert after disconnect.
-      if (!keyboardRef.current || keyboardTargetRef.current !== containerEl) {
-        keyboardRef.current?.ungrab();
-        const keyboard = new Keyboard(containerEl);
-        keyboard.onkeyevent = (keysym, code, down) => {
-          rfbRef.current?.sendKey(keysym, code, down);
-        };
-        keyboard.grab();
-        keyboardRef.current = keyboard;
-        keyboardTargetRef.current = containerEl;
-      }
+      const detachKeyboard = session.attachKeyboard(containerEl);
 
       cleanupRef.current = () => {
-        rfb.removeEventListener("fbresize", handleFbResize);
+        for (const removeListener of removeSessionListeners) removeListener();
+        detachKeyboard();
         overlayEl.removeEventListener("touchstart", handleViewportTouchStart);
         overlayEl.removeEventListener("touchmove", handleViewportTouchMove);
         overlayEl.removeEventListener("touchend", handleViewportTouchEnd);
@@ -1391,7 +1401,7 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
         clearResizeRetryTimer();
       };
     },
-    [containerRef],
+    [containerRef, createSession],
   );
 
   const disconnect = useCallback(() => {
@@ -1399,11 +1409,11 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
     connectionIdRef.current += 1;
     cleanupRef.current?.();
     cleanupRef.current = null;
-    const rfb = rfbRef.current;
-    rfbRef.current = null;
-    if (rfb) {
+    const session = sessionRef.current;
+    sessionRef.current = null;
+    if (session) {
       try {
-        rfb.disconnect();
+        session.disconnect();
       } catch {
         // Already torn down.
       }
@@ -1412,22 +1422,22 @@ export function useVnc(containerRef: React.RefObject<HTMLDivElement | null>) {
   }, []);
 
   const sendClipboard = useCallback((text: string): boolean => {
-    const rfb = rfbRef.current;
-    if (!rfb || !rfb.connected) return false;
-    rfb.clipboardPasteFrom(text);
+    const session = sessionRef.current;
+    if (!session || !session.connected) return false;
+    session.sendClipboard(text);
     return true;
   }, []);
 
   const sendKey = useCallback((keysym: number, pressed: boolean) => {
-    rfbRef.current?.sendKey(keysym, null, pressed);
+    sessionRef.current?.sendKey(keysym, null, pressed);
   }, []);
 
   const sendKeyCombo = useCallback((keysyms: number[]) => {
-    const rfb = rfbRef.current;
-    if (!rfb) return;
-    for (const k of keysyms) rfb.sendKey(k, null, true);
+    const session = sessionRef.current;
+    if (!session) return;
+    for (const k of keysyms) session.sendKey(k, null, true);
     for (let i = keysyms.length - 1; i >= 0; i--)
-      rfb.sendKey(keysyms[i], null, false);
+      session.sendKey(keysyms[i], null, false);
   }, []);
 
   // Cleanup on unmount

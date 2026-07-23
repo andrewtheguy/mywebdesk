@@ -11,6 +11,6 @@
  */
 
 export function stopEvent(e: Event): void {
-    e.stopPropagation();
-    e.preventDefault();
+  e.stopPropagation();
+  e.preventDefault();
 }

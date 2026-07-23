@@ -4,6 +4,9 @@ bin
 server/embeddedAssets.generated.ts
 *.log
 remotex.toml
+.env
+.env.local
+.env.*.local
 .DS_Store
 *.sw?
 package-lock.json

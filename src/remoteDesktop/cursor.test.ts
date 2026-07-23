@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { decodeCursorRect } from "./cursor";
+import { decodeCursorRect, FALLBACK_CURSOR } from "./cursor";
 
 function rgbxPixels(colors: [number, number, number][]): Uint8Array {
   const pixels = new Uint8Array(colors.length * 4);
@@ -71,6 +71,19 @@ test("empty rect means the pointer is hidden", () => {
   expect(
     decodeCursorRect(0, 0, 0, 0, new Uint8Array(0), new Uint8Array(0)),
   ).toBeNull();
+});
+
+test("fallback cursor is a centered, partially transparent dot", () => {
+  const { width, height, hotX, hotY, rgba } = FALLBACK_CURSOR;
+  expect(rgba.length).toBe(width * height * 4);
+  expect(hotX).toBe((width - 1) / 2);
+  expect(hotY).toBe((height - 1) / 2);
+  expect(Number.isInteger(hotX)).toBe(true);
+  expect(Number.isInteger(hotY)).toBe(true);
+  // Hotspot pixel is opaque; corners stay transparent.
+  expect(rgba[(hotY * width + hotX) * 4 + 3]).toBe(255);
+  expect(rgba[3]).toBe(0);
+  expect(rgba[(width * height - 1) * 4 + 3]).toBe(0);
 });
 
 test("fully masked cursor means the pointer is hidden", () => {

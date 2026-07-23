@@ -7,6 +7,33 @@ export interface RemoteCursorImage {
 }
 
 /**
+ * Pointer shape used whenever the server has not provided a usable one: a
+ * black dot with a white ring, hotspot at its center. macOS Screen Sharing
+ * sends no cursor rect at the login window and hides the pointer while
+ * typing; without a fallback the pointer position would be invisible there.
+ */
+export const FALLBACK_CURSOR: RemoteCursorImage = buildFallbackCursor();
+
+function buildFallbackCursor(): RemoteCursorImage {
+  const size = 11;
+  const center = (size - 1) / 2;
+  const rgba = new Uint8ClampedArray(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const r = Math.hypot(x - center, y - center);
+      if (r > 4.6) continue; // transparent corner
+      const i = (y * size + x) * 4;
+      const white = r > 2.8 ? 255 : 0;
+      rgba[i] = white;
+      rgba[i + 1] = white;
+      rgba[i + 2] = white;
+      rgba[i + 3] = 255;
+    }
+  }
+  return { width: size, height: size, hotX: center, hotY: center, rgba };
+}
+
+/**
  * Decode a RichCursor pseudo-encoding rect payload into an RGBA image.
  *
  * `pixels` holds width×height cursor pixels in the negotiated 32bpp

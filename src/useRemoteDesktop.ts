@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseConnectionTargets } from "./connectionConfig";
-import { cursorCssValue, type RemoteCursorImage } from "./remoteDesktop/cursor";
+import {
+  cursorCssValue,
+  FALLBACK_CURSOR,
+  type RemoteCursorImage,
+} from "./remoteDesktop/cursor";
 import type {
   RemoteDesktopSession,
   RemoteDesktopSessionFactory,
@@ -356,15 +360,16 @@ export function useRemoteDesktop(
       // per-frame (pinch/pan) calls.
       function updateVirtualPointer(): void {
         if (!virtualPointerEl) return;
-        if (!remoteCursor || !hasCursorPosition) {
+        if (!hasCursorPosition) {
           virtualPointerEl.style.display = "none";
           return;
         }
+        const cursor = remoteCursor ?? FALLBACK_CURSOR;
         const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
         const x =
-          panOffset.x + (cursorPosition.x - remoteCursor.hotX) * effectiveScale;
+          panOffset.x + (cursorPosition.x - cursor.hotX) * effectiveScale;
         const y =
-          panOffset.y + (cursorPosition.y - remoteCursor.hotY) * effectiveScale;
+          panOffset.y + (cursorPosition.y - cursor.hotY) * effectiveScale;
         virtualPointerEl.style.display = "";
         virtualPointerEl.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${effectiveScale})`;
       }
@@ -374,20 +379,13 @@ export function useRemoteDesktop(
       // canvas stays at the shape's native size.
       function drawVirtualPointer(): void {
         if (!virtualPointerEl) return;
-        if (!remoteCursor) {
-          virtualPointerEl.style.display = "none";
-          return;
-        }
-        virtualPointerEl.width = remoteCursor.width;
-        virtualPointerEl.height = remoteCursor.height;
+        const cursor = remoteCursor ?? FALLBACK_CURSOR;
+        virtualPointerEl.width = cursor.width;
+        virtualPointerEl.height = cursor.height;
         const ctx = virtualPointerEl.getContext("2d");
         if (!ctx) return;
         ctx.putImageData(
-          new ImageData(
-            remoteCursor.rgba,
-            remoteCursor.width,
-            remoteCursor.height,
-          ),
+          new ImageData(cursor.rgba, cursor.width, cursor.height),
           0,
           0,
         );
@@ -405,19 +403,13 @@ export function useRemoteDesktop(
       // call repeatedly: the data URL is only regenerated when the cursor
       // or its displayed size actually changes.
       function applyOverlayCursor(): void {
-        if (!remoteCursor) {
-          if (appliedCursorKey !== "") {
-            appliedCursorKey = "";
-            overlayEl.style.cursor = "none";
-          }
-          return;
-        }
+        const cursor = remoteCursor ?? FALLBACK_CURSOR;
         const scale = Math.max(0.0001, fitScale * zoomScale);
-        const cssWidth = Math.max(1, Math.round(remoteCursor.width * scale));
+        const cssWidth = Math.max(1, Math.round(cursor.width * scale));
         const key = `${remoteCursorSerial}:${cssWidth}`;
         if (key === appliedCursorKey) return;
         appliedCursorKey = key;
-        overlayEl.style.cursor = cursorCssValue(remoteCursor, scale);
+        overlayEl.style.cursor = cursorCssValue(cursor, scale);
       }
 
       function applyDisplayTransform(
@@ -1450,6 +1442,11 @@ export function useRemoteDesktop(
           body: JSON.stringify({ width, height }),
         }).catch(() => {});
       }
+      // Seed the pointer bitmap with the fallback shape so the pointer is
+      // visible even if the server never sends a cursor rect (macOS sends
+      // none at the login window).
+      drawVirtualPointer();
+
       const removeSessionListeners = [
         session.on("framebufferResize", handleFramebufferResize),
         session.on("cursor", ({ cursor }) => {

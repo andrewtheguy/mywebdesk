@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { parseConnectionTargets, type VncTargetInfo } from "./connectionConfig";
+import { DEFAULT_PICTURE_QUALITY } from "./remoteDesktop/RemoteDesktopSession";
 import { createRfbRemoteDesktopSession } from "./remoteDesktop/rfb/RfbRemoteDesktopSession";
 import { SoftKeyboardPanel } from "./SoftKeyboardPanel";
 import { useRemoteDesktop } from "./useRemoteDesktop";
@@ -30,6 +31,23 @@ const F11_KEYSYM = 0xffc8;
 const AES_GCM_IV_SIZE = 12;
 const CRC32_POLYNOMIAL = 0xedb88320;
 const CLIPBOARD_NOTICE_DURATION_MS = 1800;
+
+// Tight JPEG quality presets advertised to the VNC server. Whether lossy
+// quality is honored depends on the server; TigerVNC-style servers apply it.
+const PICTURE_QUALITY_STORAGE_KEY = "remotex-picture-quality";
+const PICTURE_QUALITY_PRESETS = [
+  { label: "High", level: DEFAULT_PICTURE_QUALITY },
+  { label: "Balanced", level: 6 },
+  { label: "Low", level: 3 },
+  { label: "Lowest", level: 0 },
+] as const;
+
+function loadStoredPictureQuality(): number {
+  const stored = Number(localStorage.getItem(PICTURE_QUALITY_STORAGE_KEY));
+  return PICTURE_QUALITY_PRESETS.some((preset) => preset.level === stored)
+    ? stored
+    : DEFAULT_PICTURE_QUALITY;
+}
 
 const DESKTOP_BROWSER_BLOCKED_KEYS = [
   { label: "F5", keysyms: [F5_KEYSYM] },
@@ -127,12 +145,16 @@ export default function App() {
     sendClipboard,
     sendKey,
     sendKeyCombo,
+    setPictureQuality,
     state,
     error,
     clipboardText,
   } = useRemoteDesktop(containerRef, createRfbRemoteDesktopSession);
 
   const [toolbarOpen, setToolbarOpen] = useState(false);
+  const [pictureQuality, setPictureQualityState] = useState(
+    loadStoredPictureQuality,
+  );
   const [clipboardInput, setClipboardInput] = useState("");
   const [remoteClipboardPayload, setRemoteClipboardPayload] =
     useState<RemoteClipboardPayload | null>(null);
@@ -904,6 +926,21 @@ export default function App() {
     [fabPosition, getDefaultFabPosition],
   );
 
+  // Keep the session's advertised picture quality in sync — initial value
+  // after connect and live re-advertisement on change — and persist it.
+  useEffect(() => {
+    setPictureQuality(pictureQuality);
+  }, [pictureQuality, setPictureQuality]);
+
+  const handlePictureQualityChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const level = Number(e.target.value);
+      setPictureQualityState(level);
+      localStorage.setItem(PICTURE_QUALITY_STORAGE_KEY, String(level));
+    },
+    [],
+  );
+
   const toolbarStyle = useMemo(() => {
     const minLeft = viewportState.offsetX + FAB_MARGIN;
     const maxLeft =
@@ -1249,6 +1286,24 @@ export default function App() {
                 ))}
               </div>
             </div>
+          </div>
+
+          <div className="toolbar-section">
+            <label className="toolbar-label" htmlFor="quality-select">
+              Picture quality
+            </label>
+            <select
+              id="quality-select"
+              className="target-select quality-select"
+              value={pictureQuality}
+              onChange={handlePictureQualityChange}
+            >
+              {PICTURE_QUALITY_PRESETS.map((preset) => (
+                <option key={preset.level} value={preset.level}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="toolbar-section toolbar-buttons">

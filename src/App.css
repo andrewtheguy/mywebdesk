@@ -144,6 +144,14 @@
   border-color: #4a9eff;
 }
 
+/* Compact variant for the in-session toolbar */
+.quality-select {
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+}
+
 /* Buttons */
 .btn {
   display: inline-block;

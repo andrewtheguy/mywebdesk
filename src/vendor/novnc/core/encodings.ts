@@ -9,6 +9,7 @@ export const encodings = {
   encodingRaw: 0,
   encodingCopyRect: 1,
   encodingTight: 7,
+  encodingZRLE: 16,
 
   pseudoEncodingQualityLevel0: -32,
   pseudoEncodingCursor: -239,

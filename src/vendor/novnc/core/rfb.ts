@@ -11,6 +11,7 @@ import { decodeCursorRect } from "../../../remoteDesktop/cursor";
 import CopyRectDecoder from "./decoders/copyrect";
 import RawDecoder from "./decoders/raw";
 import TightDecoder from "./decoders/tight";
+import ZRLEDecoder from "./decoders/zrle";
 import Deflator from "./deflator";
 import Display from "./display";
 import { encodings } from "./encodings";
@@ -30,8 +31,10 @@ const DEFAULT_BACKGROUND = "rgb(40, 40, 40)";
 // paths settle together after the window stops changing size.
 const RESIZE_REQUEST_DEBOUNCE_MS = 250;
 
-// Tight encoding quality/compression advertised to the server
-const QUALITY_LEVEL = 6;
+// Tight encoding quality/compression advertised to the server. Quality is
+// user-adjustable at runtime via the `qualityLevel` accessor; compression
+// stays fixed.
+const DEFAULT_QUALITY_LEVEL = 9;
 const COMPRESSION_LEVEL = 2;
 
 // Security types (only None is supported; the proxy in front of this
@@ -106,6 +109,7 @@ export default class RFB extends EventTarget {
   private _fbHeight: number;
   private _fbName: string;
   private _fbDepth!: number;
+  private _qualityLevel = DEFAULT_QUALITY_LEVEL;
 
   private _supportsFence: boolean;
   private _supportsContinuousUpdates: boolean;
@@ -250,6 +254,7 @@ export default class RFB extends EventTarget {
     this._decoders[encodings.encodingRaw] = new RawDecoder();
     this._decoders[encodings.encodingCopyRect] = new CopyRectDecoder();
     this._decoders[encodings.encodingTight] = new TightDecoder();
+    this._decoders[encodings.encodingZRLE] = new ZRLEDecoder();
 
     // NB: nothing that needs explicit teardown should be done
     // before this point, since this can throw an exception
@@ -424,6 +429,22 @@ export default class RFB extends EventTarget {
 
   get connected(): boolean {
     return this._rfbConnectionState === "connected";
+  }
+
+  get qualityLevel(): number {
+    return this._qualityLevel;
+  }
+
+  // Tight JPEG quality, 0 (lowest) to 9 (highest). Takes effect on the next
+  // framebuffer updates: when already connected, the encoding preferences
+  // are re-advertised immediately.
+  set qualityLevel(level: number) {
+    const clamped = Math.max(0, Math.min(9, Math.round(level)));
+    if (clamped === this._qualityLevel) return;
+    this._qualityLevel = clamped;
+    if (this.connected) {
+      this._sendEncodings();
+    }
   }
 
   get fbSize(): FbSize {
@@ -1132,12 +1153,14 @@ export default class RFB extends EventTarget {
     // Only supported with full depth support
     if (this._fbDepth === 24) {
       encs.push(encodings.encodingTight);
+      // Tight is preferred where available (it honors the quality level),
+      // but macOS Screen Sharing supports neither Tight nor the quality
+      // pseudo-encoding — ZRLE keeps it off completely uncompressed Raw.
+      encs.push(encodings.encodingZRLE);
     }
     encs.push(encodings.encodingRaw);
 
-    // Psuedo-encoding settings (fixed at noVNC's former defaults; the
-    // runtime qualityLevel/compressionLevel knobs were never used)
-    encs.push(encodings.pseudoEncodingQualityLevel0 + QUALITY_LEVEL);
+    encs.push(encodings.pseudoEncodingQualityLevel0 + this._qualityLevel);
     encs.push(encodings.pseudoEncodingCompressLevel0 + COMPRESSION_LEVEL);
 
     encs.push(encodings.pseudoEncodingDesktopSize);

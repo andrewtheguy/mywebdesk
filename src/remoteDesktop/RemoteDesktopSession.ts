@@ -18,6 +18,12 @@ export type RemoteDesktopSessionFactory = (
   channel: WebSocket,
 ) => RemoteDesktopSession;
 
+// Picture quality scale: 0 (lowest) to 9 (highest). Whether the server
+// honors it depends on the protocol/server (RFB: Tight JPEG quality).
+export const PICTURE_QUALITY_MIN = 0;
+export const PICTURE_QUALITY_MAX = 9;
+export const DEFAULT_PICTURE_QUALITY = 9;
+
 export interface RemoteDesktopSession {
   readonly canvasElement: HTMLCanvasElement;
   readonly connected: boolean;
@@ -35,6 +41,7 @@ export interface RemoteDesktopSession {
   sendKey(keysym: number | null, code: string | null, pressed?: boolean): void;
   sendPointer(x: number, y: number, buttonMask: number): void;
   setDisplayScale(scale: number): void;
+  setPictureQuality(level: number): void;
   setResizeEnabled(enabled: boolean): void;
   setTargetSizeProvider(provider: (() => DisplaySize) | null): void;
 }

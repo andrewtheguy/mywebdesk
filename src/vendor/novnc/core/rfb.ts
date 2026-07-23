@@ -11,6 +11,7 @@ import { decodeCursorRect } from "../../../remoteDesktop/cursor";
 import CopyRectDecoder from "./decoders/copyrect";
 import RawDecoder from "./decoders/raw";
 import TightDecoder from "./decoders/tight";
+import ZRLEDecoder from "./decoders/zrle";
 import Deflator from "./deflator";
 import Display from "./display";
 import { encodings } from "./encodings";
@@ -253,6 +254,7 @@ export default class RFB extends EventTarget {
     this._decoders[encodings.encodingRaw] = new RawDecoder();
     this._decoders[encodings.encodingCopyRect] = new CopyRectDecoder();
     this._decoders[encodings.encodingTight] = new TightDecoder();
+    this._decoders[encodings.encodingZRLE] = new ZRLEDecoder();
 
     // NB: nothing that needs explicit teardown should be done
     // before this point, since this can throw an exception
@@ -1151,6 +1153,10 @@ export default class RFB extends EventTarget {
     // Only supported with full depth support
     if (this._fbDepth === 24) {
       encs.push(encodings.encodingTight);
+      // Tight is preferred where available (it honors the quality level),
+      // but macOS Screen Sharing supports neither Tight nor the quality
+      // pseudo-encoding — ZRLE keeps it off completely uncompressed Raw.
+      encs.push(encodings.encodingZRLE);
     }
     encs.push(encodings.encodingRaw);
 

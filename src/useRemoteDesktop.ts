@@ -212,14 +212,31 @@ export function useRemoteDesktop(
         return;
       }
       sessionRef.current = session;
-      containerEl.appendChild(overlayEl);
 
       const screenEl = session.screenElement;
       const canvasEl = session.canvasElement;
-      screenEl.style.overflow = "hidden";
       canvasEl.style.margin = "0";
       canvasEl.style.transformOrigin = "0 0";
       canvasEl.style.willChange = "transform";
+
+      if (useHiDpiSessionSizing) {
+        // Desktop: when the server can't resize (e.g. macOS Screen Sharing)
+        // the framebuffer stays larger than the viewport, so the screen
+        // element scrolls natively in both axes. The overlay lives inside the
+        // scroller and tracks the canvas size so the scrollbars stay usable.
+        screenEl.style.overflow = "auto";
+        screenEl.style.position = "relative";
+        screenEl.classList.add("remote-screen");
+        overlayEl.style.inset = "auto";
+        overlayEl.style.left = "0";
+        overlayEl.style.top = "0";
+        overlayEl.style.width = "0px";
+        overlayEl.style.height = "0px";
+        screenEl.appendChild(overlayEl);
+      } else {
+        screenEl.style.overflow = "hidden";
+        containerEl.appendChild(overlayEl);
+      }
 
       let canSendResize = false;
 
@@ -320,6 +337,35 @@ export function useRemoteDesktop(
         const displayWidth = getRemoteWidth();
         const displayHeight = getRemoteHeight();
         if (displayWidth <= 0 || displayHeight <= 0) return;
+
+        if (useHiDpiSessionSizing) {
+          // Desktop renders 1:1 in device pixels and scrolls any overflow
+          // instead of shrinking the desktop to fit. A compliant server
+          // matches the viewport, so no scrollbars appear there.
+          const dpr = window.devicePixelRatio || 1;
+          let scale = 1 / dpr;
+          const { width: containerWidth, height: containerHeight } =
+            getContainerSize();
+          // Snap to the container when the server matched the viewport so
+          // sub-pixel rounding can't spawn phantom scrollbars.
+          if (
+            Math.abs(displayWidth * scale - containerWidth) <= 1 &&
+            Math.abs(displayHeight * scale - containerHeight) <= 1
+          ) {
+            scale = Math.min(
+              containerWidth / displayWidth,
+              containerHeight / displayHeight,
+            );
+          }
+          fitScale = scale;
+          zoomScale = 1;
+          panOffset = { x: 0, y: 0 };
+          session.setDisplayScale(scale);
+          canvasEl.style.transform = "";
+          overlayEl.style.width = `${displayWidth * scale}px`;
+          overlayEl.style.height = `${displayHeight * scale}px`;
+          return;
+        }
 
         const { width: containerWidth } = getContainerSize();
         fitScale = Math.min(containerWidth / displayWidth, 1);
@@ -1229,6 +1275,10 @@ export function useRemoteDesktop(
       function doResize() {
         if (!canSendResize) return;
 
+        // Reapply the display transform even if the server never honors the
+        // resize (no framebufferResize event), e.g. after a dpr change.
+        applyDisplayTransform();
+
         const { width: w, height: h } = computeSessionSizeTarget();
 
         if (getRemoteWidth() === w && getRemoteHeight() === h) {
@@ -1394,9 +1444,7 @@ export function useRemoteDesktop(
         }
         dprQuery?.removeEventListener("change", handleDprChange);
         dprQuery = null;
-        if (overlayEl.parentElement === containerEl) {
-          containerEl.removeChild(overlayEl);
-        }
+        overlayEl.remove();
         if (resizeTimer.current) clearTimeout(resizeTimer.current);
         clearResizeRetryTimer();
       };

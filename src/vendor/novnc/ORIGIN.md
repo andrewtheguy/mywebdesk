@@ -166,12 +166,9 @@ TypeScript migration:
   fork now type-checks under `strict`. Notable decisions:
   - `websock.ts`: a named `WebsockEventHandlers` map; receive/send queues are
     definite-assigned (`_rQ!`/`_sQ!`, allocated in `_allocateBuffers`).
-  - `display.ts`: the render queue is a discriminated `RenderAction` union;
-    the vendor-prefixed `*ImageSmoothingEnabled` toggles use a local cast
-    (not in lib.dom); the pending-image `load` handler keeps its
-    `this`-bound-to-`<img>` semantics via an explicit `this: HTMLImageElement`
-    on `_resumeRenderQ` plus a module-local `HTMLImageElement._remoteDisplay`
-    augmentation.
+  - The original `display.ts` implementation was replaced by a license-
+    preserving re-export of the first-party
+    `remoteDesktop/rendering/WebGl2FramebufferRenderer.ts`.
   - `tight.ts`: local structural `TightSock`/`TightDisplay` interfaces (as in
     `raw.ts`/`copyrect.ts`); `_zlibs` keeps the concrete `Inflator` type since
     it is instantiated. `decodeRect` captures `_ctl` into a local so the
@@ -186,3 +183,19 @@ TypeScript migration:
   `@novnc-core` alias. TypeScript now checks the concrete source modules.
 - The fork is included in the repository-wide Biome checks and formatted with
   the same rules as first-party code while retaining all MPL-2.0 headers.
+
+WebGL2 renderer replacement:
+
+- Removed the Canvas 2D visible context, hidden backbuffer, `ImageData`,
+  `drawImage`, damage tracking, image-smoothing compatibility properties, and
+  all Canvas 2D fallback behavior.
+- The remote framebuffer is an RGBA8 GPU texture. Pixel rectangles upload with
+  `texSubImage2D`; fills use scissored framebuffer clears; CopyRect uses GPU
+  blits through a reusable scratch framebuffer so overlapping copies are safe.
+- Presentation is a full-screen triangle using a minimal WebGL2 shader and
+  nearest-neighbor texture sampling.
+- Tight JPEG payloads use Blob URLs and upload decoded images directly to the
+  framebuffer texture while retaining ordered render-queue semantics.
+- WebGL2 is created with `failIfMajorPerformanceCaveat` and a high-performance
+  power preference. RemoteX has no Canvas 2D or WebGL1 compatibility path, and
+  a lost context fails the RFB connection.

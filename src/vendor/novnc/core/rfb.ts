@@ -258,6 +258,18 @@ export default class RFB extends EventTarget {
       Log.ErrorLog(`Display exception: ${String(exc)}`);
       throw exc;
     }
+    this._canvas.addEventListener("webglcontextlost", (event) => {
+      event.preventDefault();
+      this._fail("WebGL2 rendering context was lost");
+    });
+    this._canvas.addEventListener("renderererror", (event) => {
+      const detail = (event as CustomEvent<{ message?: unknown }>).detail;
+      const message =
+        typeof detail?.message === "string"
+          ? detail.message
+          : "WebGL2 renderer failed";
+      this._fail(message);
+    });
 
     this._sock = new Websock();
     this._sock.on("open", this._socketOpen.bind(this));
@@ -463,6 +475,7 @@ export default class RFB extends EventTarget {
     Log.Debug(">> RFB.disconnect");
     this._resizeObserver.disconnect();
     this._sock.close();
+    this._display.dispose();
     try {
       this._target.removeChild(this._screen);
     } catch (e) {

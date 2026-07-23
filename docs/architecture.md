@@ -11,6 +11,7 @@ App.tsx
        └─ RemoteDesktopSession (app-owned TypeScript contract)
             └─ RfbRemoteDesktopSession (RFB adapter)
                  └─ vendored RFB engine
+                      └─ WebGl2FramebufferRenderer (app-owned GPU renderer)
 
 Browser WebSocket
   └─ /vnc/ws
@@ -30,6 +31,18 @@ than a hidden dependency inside the hook.
 `RfbRemoteDesktopSession` is the translation layer. It is the only first-party
 module allowed to import the vendored engine. It converts noVNC event names and
 custom methods into the app-owned contract and owns the noVNC keyboard helper.
+
+`WebGl2FramebufferRenderer` is first-party rendering infrastructure rather than
+part of the protocol fork. It owns a persistent RGBA8 framebuffer texture. Raw
+and Tight pixel rectangles use `texSubImage2D`, solid fills and CopyRect use GPU
+framebuffers, and a minimal shader presents the completed RFB update. CopyRect
+uses a reusable scratch framebuffer so overlapping source and destination
+regions remain correct without allocating on every operation.
+
+WebGL2 with hardware acceleration is mandatory. Startup performs the same
+high-performance context check used by the renderer, and there is no Canvas 2D
+or WebGL1 fallback. A lost context fails the active RFB connection instead of
+silently switching renderers.
 
 The vendored RFB engine remains isolated because it is MPL-2.0 code with a
 traceable upstream origin. Unlike a conventional untyped vendor drop, its
@@ -64,6 +77,7 @@ extend.
 
 - TypeScript checks concrete source modules; there are no ambient declarations
   for the RFB engine.
+- The framebuffer renderer targets WebGL2 exclusively.
 - `strict`, `verbatimModuleSyntax`, forced module detection, and modern
   ES/DOM libraries are enabled.
 - Biome checks first-party and vendored TypeScript with one repository-wide

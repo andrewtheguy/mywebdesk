@@ -198,7 +198,19 @@ export function useRemoteDesktop(
       // No credentials: the server-side proxy answers the VNC auth challenge
       // itself and presents security type None to the browser, so the VNC
       // password never reaches the client.
-      const session = createSession(containerEl, ws);
+      let session: RemoteDesktopSession;
+      try {
+        session = createSession(containerEl, ws);
+      } catch (cause) {
+        ws.close(1000, "renderer-unavailable");
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Failed to initialize the remote desktop renderer",
+        );
+        setState("error");
+        return;
+      }
       sessionRef.current = session;
       containerEl.appendChild(overlayEl);
 

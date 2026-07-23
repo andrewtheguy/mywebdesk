@@ -12,6 +12,7 @@ React layer remains independent of noVNC APIs.
 ## Features
 
 - **1:1 device-pixel rendering** — the remote desktop is resized to exactly `viewport × devicePixelRatio` and rendered 1:1 in device pixels (see below)
+- **WebGL2-only framebuffer** — dirty rectangles upload directly into a GPU texture; fills, CopyRect operations, scaling, and presentation stay on the GPU
 - **Visible menu toggle** — FAB button always visible (no Ctrl+Alt+Shift or swipe needed)
 - **Consistent touch controls** — one-finger tap: left-click at cursor; hard-press: hold left-click; second-finger directional drag: move cursor while hold-drag is active; two-finger tap: right-click; two-finger pinch: zoom; two-finger drag: pan when not in hold-drag mode; three-finger swipe: scroll (vertical and horizontal via RFB wheel buttons 6/7)
 - **Smart sizing** — follows viewport/container size, min-clamped to native VNC resolution
@@ -132,7 +133,15 @@ Touch devices (iPad/phone) keep 1× sizing and rely on pinch-zoom instead, same 
 
 ## Browser requirements
 
-Requires the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API) (`crypto.subtle`) and a secure context (HTTPS or localhost). The app will refuse to load on unsupported browsers.
+Requires all of the following:
+
+- Hardware-accelerated **WebGL2** without a major performance caveat. There is
+  intentionally no Canvas 2D, WebGL1, or software-rendering fallback.
+- The [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API)
+  (`crypto.subtle`).
+- A secure context (HTTPS or localhost).
+
+The app refuses to start when these requirements are unavailable.
 
 ## Install as an app (PWA)
 

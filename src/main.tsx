@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { isWebGl2RendererSupported } from "./remoteDesktop/rendering/WebGl2FramebufferRenderer";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -19,6 +20,14 @@ if (
     "This app requires the Web Crypto API (crypto.subtle).<br>" +
     "Use a modern browser over HTTPS or localhost.</p>";
   throw new Error("Web Crypto API unavailable");
+}
+
+if (!isWebGl2RendererSupported()) {
+  rootElement.innerHTML =
+    '<p style="color:#ff6b6b;font-family:system-ui,sans-serif;text-align:center;padding:2rem">' +
+    "This app requires hardware-accelerated WebGL2.<br>" +
+    "Enable WebGL2 and browser hardware acceleration, then reload.</p>";
+  throw new Error("Required WebGL2 renderer unavailable");
 }
 
 createRoot(rootElement).render(

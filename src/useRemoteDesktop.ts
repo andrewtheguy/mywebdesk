@@ -196,6 +196,23 @@ export function useRemoteDesktop(
       overlayEl.style.cursor = "none";
       overlayEl.style.touchAction = "none";
 
+      // Touch devices have no hardware pointer, so a CSS cursor never
+      // renders there. Instead the server-provided cursor shape is drawn
+      // into this element, which tracks the virtual pointer position the
+      // touch gestures drive.
+      const virtualPointerEl = canPinchZoom
+        ? document.createElement("canvas")
+        : null;
+      if (virtualPointerEl) {
+        virtualPointerEl.style.position = "absolute";
+        virtualPointerEl.style.left = "0";
+        virtualPointerEl.style.top = "0";
+        virtualPointerEl.style.transformOrigin = "0 0";
+        virtualPointerEl.style.pointerEvents = "none";
+        virtualPointerEl.style.display = "none";
+        overlayEl.appendChild(virtualPointerEl);
+      }
+
       // No credentials: the server-side proxy answers the VNC auth challenge
       // itself and presents security type None to the browser, so the VNC
       // password never reaches the client.
@@ -334,6 +351,55 @@ export function useRemoteDesktop(
         };
       }
 
+      // Reposition the virtual pointer element over the tracked cursor
+      // position. Pure style-transform work, cheap enough for per-move and
+      // per-frame (pinch/pan) calls.
+      function updateVirtualPointer(): void {
+        if (!virtualPointerEl) return;
+        if (!remoteCursor || !hasCursorPosition) {
+          virtualPointerEl.style.display = "none";
+          return;
+        }
+        const effectiveScale = Math.max(0.0001, fitScale * zoomScale);
+        const x =
+          panOffset.x + (cursorPosition.x - remoteCursor.hotX) * effectiveScale;
+        const y =
+          panOffset.y + (cursorPosition.y - remoteCursor.hotY) * effectiveScale;
+        virtualPointerEl.style.display = "";
+        virtualPointerEl.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${effectiveScale})`;
+      }
+
+      // Redraw the virtual pointer bitmap after the server sent a new
+      // cursor shape. Scaling is handled by the CSS transform above, so the
+      // canvas stays at the shape's native size.
+      function drawVirtualPointer(): void {
+        if (!virtualPointerEl) return;
+        if (!remoteCursor) {
+          virtualPointerEl.style.display = "none";
+          return;
+        }
+        virtualPointerEl.width = remoteCursor.width;
+        virtualPointerEl.height = remoteCursor.height;
+        const ctx = virtualPointerEl.getContext("2d");
+        if (!ctx) return;
+        ctx.putImageData(
+          new ImageData(
+            remoteCursor.rgba,
+            remoteCursor.width,
+            remoteCursor.height,
+          ),
+          0,
+          0,
+        );
+        updateVirtualPointer();
+      }
+
+      function trackCursorPosition(x: number, y: number): void {
+        cursorPosition = { x, y };
+        hasCursorPosition = true;
+        updateVirtualPointer();
+      }
+
       // Render the server-provided pointer shape as the overlay's CSS
       // cursor, scaled to match the framebuffer's on-screen size. Cheap to
       // call repeatedly: the data URL is only regenerated when the cursor
@@ -400,7 +466,7 @@ export function useRemoteDesktop(
         session.setDisplayScale(effectiveScale);
         panOffset = clampPanToBounds(nextPan.x, nextPan.y, effectiveScale);
         canvasEl.style.transform = `translate3d(${panOffset.x}px, ${panOffset.y}px, 0)`;
-        applyOverlayCursor();
+        updateVirtualPointer();
       }
 
       function getTouchDistance(first: Touch, second: Touch): number {
@@ -563,8 +629,7 @@ export function useRemoteDesktop(
         leftDown: boolean,
       ): void {
         const clamped = clampCursorToDisplay(remoteX, remoteY);
-        cursorPosition = { x: clamped.x, y: clamped.y };
-        hasCursorPosition = true;
+        trackCursorPosition(clamped.x, clamped.y);
         sendMouse(clamped.x, clamped.y, { left: leftDown });
       }
 
@@ -574,8 +639,7 @@ export function useRemoteDesktop(
           getRemoteWidth() / 2,
           getRemoteHeight() / 2,
         );
-        cursorPosition = fallback;
-        hasCursorPosition = true;
+        trackCursorPosition(fallback.x, fallback.y);
         return fallback;
       }
 
@@ -598,8 +662,7 @@ export function useRemoteDesktop(
         down: boolean,
       ): void {
         const clamped = clampCursorToDisplay(remoteX, remoteY);
-        cursorPosition = { x: clamped.x, y: clamped.y };
-        hasCursorPosition = true;
+        trackCursorPosition(clamped.x, clamped.y);
         sendMouse(clamped.x, clamped.y, { up, down });
         sendMouse(clamped.x, clamped.y, {});
       }
@@ -1270,6 +1333,10 @@ export function useRemoteDesktop(
 
       function handleMouse(e: MouseEvent) {
         const { x, y } = remoteCoordsFromClient(e.clientX, e.clientY);
+        // Keep the tracked position (and the touch-mode virtual pointer on
+        // hybrid devices) in sync with real mouse input too.
+        const clamped = clampCursorToDisplay(x, y);
+        trackCursorPosition(clamped.x, clamped.y);
         sendMouse(x, y, {
           left: !!(e.buttons & 1),
           middle: !!(e.buttons & 4),
@@ -1388,7 +1455,11 @@ export function useRemoteDesktop(
         session.on("cursor", ({ cursor }) => {
           remoteCursor = cursor;
           remoteCursorSerial += 1;
-          applyOverlayCursor();
+          if (virtualPointerEl) {
+            drawVirtualPointer();
+          } else {
+            applyOverlayCursor();
+          }
         }),
       ];
 
